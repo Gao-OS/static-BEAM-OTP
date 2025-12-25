@@ -1,0 +1,20 @@
+# Build artifacts
+/_build/
+/deps/
+/*.lock
+
+# Generated release
+/rel/
+
+# Crash dumps
+erl_crash.dump
+
+# Dialyzer
+/priv/plts/
+
+# Editor
+*.swp
+*.swo
+*~
+.idea/
+.vscode/

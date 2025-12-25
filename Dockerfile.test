@@ -1,0 +1,27 @@
+# Simple Dockerfile for testing static BEAM across distros
+#
+# Usage:
+#   1. Build static BEAM: nix build .#static-erlang
+#   2. Copy result: cp -rL result static-beam
+#   3. Test on different bases:
+#
+#   docker build -f Dockerfile.test --build-arg BASE=debian:bookworm-slim -t test-debian .
+#   docker build -f Dockerfile.test --build-arg BASE=alpine:3.19 -t test-alpine .
+#   docker build -f Dockerfile.test --build-arg BASE=busybox:musl -t test-busybox .
+#
+#   docker run --rm test-debian
+#   docker run --rm test-alpine
+#   docker run --rm test-busybox
+
+ARG BASE=alpine:3.19
+
+FROM ${BASE}
+
+# Copy pre-built static BEAM
+COPY static-beam/ /opt/beam/
+
+# Set PATH
+ENV PATH="/opt/beam/bin:$PATH"
+
+# Simple test command
+CMD ["erl", "-noshell", "-eval", "io:format(\"Erlang ~s on ~s~n\", [erlang:system_info(otp_release), erlang:system_info(system_architecture)]), halt()."]
