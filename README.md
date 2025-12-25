@@ -16,20 +16,23 @@ The resulting binaries have **no dynamic dependencies** and run on any Linux dis
 
 ### Prerequisites
 
-- [Nix](https://nixos.org/download.html) with flakes enabled
-- Optional: Docker for testing
+- [Nix](https://nixos.org/download.html)
+- [devenv](https://devenv.sh/)
+
+### Enter Development Environment
+
+```bash
+devenv shell
+```
 
 ### Build Static BEAM
 
 ```bash
 # Build static Erlang/OTP
-nix build .#static-erlang
+sbeam build erlang
 
-# Build static Elixir (includes Erlang)
-nix build .#static-elixir
-
-# Build both
-nix build .#static-beam
+# Or build static Elixir (includes Erlang)
+sbeam build elixir
 
 # The result is in ./result
 ls -la result/bin/
@@ -38,28 +41,18 @@ ls -la result/bin/
 ### Verify Binaries are Static
 
 ```bash
-# Run verification script
-./scripts/verify.sh
+sbeam verify
 
-# Manual verification
-file result/lib/erlang/erts-*/bin/beam.smp
-# Output: ... statically linked ...
-
-ldd result/lib/erlang/erts-*/bin/beam.smp
-# Output: not a dynamic executable
+# Output should show "statically linked"
 ```
 
 ### Test Portability
 
 ```bash
-# Copy result for Docker
-cp -rL result static-beam
+# Test in Docker containers
+sbeam test
 
-# Build and run test container
-docker build -t static-beam-test .
-docker run --rm static-beam-test
-
-# Test on specific distros
+# Or manually test on specific distros
 docker run --rm -v $(pwd)/static-beam:/opt/beam debian:bookworm-slim \
   /opt/beam/bin/erl -noshell -eval 'io:format("Hello from Debian!~n"), halt().'
 
@@ -70,33 +63,15 @@ docker run --rm -v $(pwd)/static-beam:/opt/beam busybox:musl \
   /opt/beam/bin/erl -noshell -eval 'io:format("Hello from BusyBox!~n"), halt().'
 ```
 
-## Development Environment
+## Commands
 
-### Using devenv
-
-```bash
-# Enter development shell
-devenv shell
-
-# Available commands:
-build-static-erlang   # Build static Erlang/OTP
-build-static-elixir   # Build static Elixir
-build-static-beam     # Build both
-verify-static         # Verify binaries are static
-test-docker           # Run Docker tests
-```
-
-### Using Nix Flake
-
-```bash
-# Enter development shell
-nix develop
-
-# Build packages
-nix build .#static-erlang
-nix build .#static-elixir
-nix build .#static-beam
-```
+| Command | Description |
+|---------|-------------|
+| `sbeam build [erlang\|elixir\|all]` | Build static BEAM |
+| `sbeam verify [path]` | Verify binaries are static |
+| `sbeam test` | Test in Docker containers |
+| `sbeam clean` | Remove build artifacts |
+| `sbeam help` | Show help |
 
 ## Using Static ERTS in Elixir Releases
 
@@ -118,9 +93,9 @@ defmodule MyApp.MixProject do
   defp releases do
     [
       my_app: [
-        # Point to static ERTS from Nix build
+        # Point to static ERTS from build
         include_erts: System.get_env("STATIC_ERTS_PATH") ||
-                      "/path/to/static-beam/lib/erlang",
+                      "/path/to/result/lib/erlang",
         strip_beams: true,
         steps: [:assemble, :tar]
       ]
@@ -132,13 +107,10 @@ end
 ### Build Release
 
 ```bash
-# Set the static ERTS path
-export STATIC_ERTS_PATH=$(readlink -f result/lib/erlang)
-
-# Build production release
+# STATIC_ERTS_PATH is set automatically in devenv shell
 MIX_ENV=prod mix release
 
-# The release in _build/prod/rel/my_app/ uses static ERTS
+# The release uses static ERTS
 ```
 
 ### Deploy to Minimal Container
@@ -156,27 +128,20 @@ CMD ["start"]
 
 ```
 static-beam/
-├── flake.nix              # Nix flake with packages and shells
-├── devenv.nix             # devenv development environment
+├── devenv.nix             # Development environment and sbeam command
 ├── nix/
 │   ├── static-erlang.nix  # Static Erlang/OTP derivation
 │   └── static-elixir.nix  # Static Elixir derivation
-├── scripts/
-│   ├── build.sh           # Build helper script
-│   └── verify.sh          # Verification script
 ├── example/               # Example Elixir project
 │   ├── mix.exs
-│   ├── lib/
-│   └── build-release.sh
-├── Dockerfile             # Multi-distro test Dockerfile
+│   └── lib/
+├── Dockerfile             # Multi-distro test
 └── README.md
 ```
 
 ## Static Build Configuration
 
 ### Erlang Configure Flags
-
-The following flags are used to build static Erlang:
 
 ```bash
 --enable-static-nifs       # Build NIFs as static
@@ -201,37 +166,6 @@ All dependencies are statically linked:
 - **ncurses**: Terminal support
 - **zlib**: Compression support
 
-## Troubleshooting
-
-### Build Fails with SSL Errors
-
-Ensure OpenSSL is properly configured:
-
-```bash
-# Check if static OpenSSL is available
-nix build nixpkgs#pkgsCross.musl64.pkgsStatic.openssl
-```
-
-### Binary Not Static
-
-Check the verification output:
-
-```bash
-./scripts/verify.sh result
-
-# If ldd shows dynamic libraries, rebuild with:
-nix build .#static-erlang --rebuild
-```
-
-### Release Doesn't Start
-
-Verify the ERTS path is correct:
-
-```bash
-ls $STATIC_ERTS_PATH/bin/erl
-ls $STATIC_ERTS_PATH/erts-*/bin/beam.smp
-```
-
 ## Versions
 
 - **Erlang/OTP**: 26.2.5
@@ -240,8 +174,4 @@ ls $STATIC_ERTS_PATH/erts-*/bin/beam.smp
 
 ## License
 
-This project is provided under the MIT license. Erlang/OTP is licensed under Apache 2.0.
-
-## Credits
-
-Built with [Nix](https://nixos.org/) and [musl libc](https://musl.libc.org/).
+MIT. Erlang/OTP is licensed under Apache 2.0.

@@ -1,7 +1,6 @@
 # Nix
 result
 result-*
-.direnv/
 
 # devenv
 .devenv/

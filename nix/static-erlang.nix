@@ -1,20 +1,15 @@
-{ pkgs, pkgsStatic }:
+{ pkgs ? import <nixpkgs> {} }:
 
 let
-  # Static dependencies from musl pkgsStatic
-  openssl-static = pkgsStatic.openssl.override {
-    static = true;
-  };
+  # Static musl-based pkgs
+  pkgsStatic = pkgs.pkgsCross.musl64.pkgsStatic;
 
-  ncurses-static = pkgsStatic.ncurses.override {
-    enableStatic = true;
-  };
+  # Static dependencies
+  openssl-static = pkgsStatic.openssl;
+  ncurses-static = pkgsStatic.ncurses;
+  zlib-static = pkgsStatic.zlib;
 
-  zlib-static = pkgsStatic.zlib.override {
-    static = true;
-  };
-
-  # Erlang version to build
+  # Erlang version
   erlangVersion = "26.2.5";
   erlangSha256 = "sha256-nrx8RhJjk6MXKvvP8DaDOcWNr8P4BQPP/TVpD9p6wKI=";
 
@@ -60,15 +55,12 @@ pkgsStatic.stdenv.mkDerivation rec {
     "-L${zlib-static.out}/lib"
   ];
 
-  # Environment variables for static build
   LDFLAGS = "-static -L${openssl-static.out}/lib -L${ncurses-static.out}/lib -L${zlib-static.out}/lib";
   CFLAGS = "-static -Os";
 
   preConfigure = ''
-    # Generate configure script
     ./otp_build autoconf
 
-    # Patch configure to support static builds better
     substituteInPlace configure \
       --replace 'STATIC_CFLAGS=""' 'STATIC_CFLAGS="-static"'
   '';
@@ -80,7 +72,7 @@ pkgsStatic.stdenv.mkDerivation rec {
     "--disable-dynamic-ssl-lib"
     "--disable-shared"
 
-    # Disable unnecessary components for smaller binary
+    # Disable unnecessary components
     "--without-javac"
     "--without-wx"
     "--without-odbc"
@@ -94,37 +86,28 @@ pkgsStatic.stdenv.mkDerivation rec {
     "--with-ssl=${openssl-static.dev}"
     "--with-ssl-lib-subdir=lib"
 
-    # Terminal support
+    # Terminal and compression
     "--with-termcap"
     "--enable-builtin-zlib"
 
-    # Kernel poll for better performance
+    # Performance options
     "--enable-kernel-poll"
-
-    # SMP support
     "--enable-smp-support"
     "--enable-threads"
-
-    # Dirty schedulers for NIF performance
     "--enable-dirty-schedulers"
 
-    # HIPE disabled (not compatible with static builds on some platforms)
+    # Disable incompatible features
     "--disable-hipe"
-
-    # Lock counter for debugging (disable in production)
     "--disable-lock-counter"
   ];
 
-  # Build with explicit static linking
   makeFlags = [
     "LDFLAGS=-static"
     "STATIC_CFLAGS=-static"
   ];
 
-  # Parallel build
   enableParallelBuilding = true;
 
-  # Post-build verification
   postBuild = ''
     echo "Checking if BEAM is statically linked..."
     if file erts/emulator/beam/beam.smp 2>/dev/null | grep -q "statically linked"; then
@@ -136,15 +119,14 @@ pkgsStatic.stdenv.mkDerivation rec {
   '';
 
   postInstall = ''
-    # Create convenience symlinks
     mkdir -p $out/bin
 
-    # Remove unnecessary files to reduce size
+    # Remove unnecessary files
     rm -rf $out/lib/erlang/lib/*/examples
     rm -rf $out/lib/erlang/lib/*/doc
     rm -rf $out/lib/erlang/man
 
-    # Strip binaries for smaller size
+    # Strip binaries
     find $out -type f -executable -exec strip --strip-all {} \; 2>/dev/null || true
 
     echo ""
@@ -152,10 +134,7 @@ pkgsStatic.stdenv.mkDerivation rec {
     echo "ERTS directory: $out/lib/erlang/erts-*"
   '';
 
-  # Verification phase
-  doCheck = false;  # Skip tests for faster builds
-
-  # Needed for static builds
+  doCheck = false;
   dontDisableStatic = true;
 
   meta = with pkgs.lib; {
@@ -163,6 +142,5 @@ pkgsStatic.stdenv.mkDerivation rec {
     homepage = "https://www.erlang.org/";
     license = licenses.asl20;
     platforms = [ "x86_64-linux" "aarch64-linux" ];
-    maintainers = [ ];
   };
 }
