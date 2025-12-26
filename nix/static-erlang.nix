@@ -11,7 +11,7 @@ let
 
   # Erlang version
   erlangVersion = "26.2.5";
-  erlangSha256 = "sha256-nrx8RhJjk6MXKvvP8DaDOcWNr8P4BQPP/TVpD9p6wKI=";
+  erlangSha256 = "sha256-tUAvzkTE51gT4kS7voEZZpsMKVyBQR+wgk6mI0s1Vac=";
 
 in
 pkgsStatic.stdenv.mkDerivation rec {
