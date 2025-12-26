@@ -1,9 +1,9 @@
 # Static Erlang/OTP build
 #
-# Uses pkgsStatic which builds packages with static linking.
-# This avoids cross-compilation complexity.
+# Uses pkgsStatic.beamMinimalPackages which builds Erlang with musl
+# and static linking, without wxwidgets (which requires libglvnd).
 
 { pkgs ? import <nixpkgs> {} }:
 
-# pkgsStatic uses musl and static linking for all packages
-pkgs.pkgsStatic.erlang
+# beamMinimalPackages avoids wxwidgets/OpenGL dependencies
+pkgs.pkgsStatic.beamMinimalPackages.erlang
