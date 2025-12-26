@@ -13,7 +13,7 @@ let
   # Get the Erlang package with musl, disabling wxwidgets
   erlangMusl = pkgsMusl.erlang.override {
     # Disable wxwidgets - it pulls in webkit and other complex deps that fail on musl
-    wxGTK = null;
+    wxGTK32 = null;
     wxSupport = false;
   };
 
