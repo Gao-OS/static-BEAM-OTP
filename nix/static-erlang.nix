@@ -32,6 +32,8 @@ pkgsStatic.stdenv.mkDerivation rec {
     perl
     gnumake
     m4
+    # Bootstrap Erlang for cross-compilation
+    erlang
   ];
 
   buildInputs = [
@@ -58,7 +60,12 @@ pkgsStatic.stdenv.mkDerivation rec {
   LDFLAGS = "-static -L${openssl-static.out}/lib -L${ncurses-static.out}/lib -L${zlib-static.out}/lib";
   CFLAGS = "-static -Os";
 
+  # Cross-compilation configuration
+  erl_xcomp_sysroot = pkgsStatic.stdenv.cc.libc;
+
   preConfigure = ''
+    # Set up cross-compilation environment
+    export erl_xcomp_sysroot="${pkgsStatic.stdenv.cc.libc}"
     ./otp_build autoconf
 
     substituteInPlace configure \
@@ -82,9 +89,10 @@ pkgsStatic.stdenv.mkDerivation rec {
     "--without-et"
     "--without-jinterface"
 
-    # SSL configuration
+    # SSL configuration for cross-compilation
     "--with-ssl=${openssl-static.dev}"
-    "--with-ssl-lib-subdir=lib"
+    "--with-ssl-incl=${openssl-static.dev}"
+    "--with-ssl-lib=${openssl-static.out}/lib"
 
     # Terminal and compression
     "--with-termcap"
