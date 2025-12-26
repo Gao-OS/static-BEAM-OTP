@@ -63,6 +63,11 @@ pkgsStatic.stdenv.mkDerivation rec {
   # Cross-compilation configuration
   erl_xcomp_sysroot = pkgsStatic.stdenv.cc.libc;
 
+  postPatch = ''
+    # Fix shebangs that reference /usr/bin/env
+    patchShebangs .
+  '';
+
   preConfigure = ''
     # Set up cross-compilation environment
     export erl_xcomp_sysroot="${pkgsStatic.stdenv.cc.libc}"
