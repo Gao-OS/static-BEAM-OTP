@@ -10,8 +10,8 @@ let
   zlib-static = pkgsStatic.zlib;
 
   # Erlang version - should match beam28Packages in devenv.nix
-  erlangVersion = "28.0";
-  erlangSha256 = "sha256-ZqND4bOp0vUkBKznhojwsN3MygDf3I7OLkR05EUnSRg=";
+  erlangVersion = "28.2";
+  erlangSha256 = "sha256-59IUTZrjDqmz3qVQOS3Ni35fD6TzosPnRSMsuR6vF4k=";
 
 in
 pkgsStatic.stdenv.mkDerivation rec {

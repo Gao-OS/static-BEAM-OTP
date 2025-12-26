@@ -4,9 +4,9 @@ let
   pkgs-stable = import inputs.nixpkgs-stable { system = pkgs.stdenv.system; };
   pkgs-unstable = import inputs.nixpkgs-unstable { system = pkgs.stdenv.system; };
 
-  # Pin OTP version - update this when upgrading
-  otpVersion = "28.0";
-  elixirVersion = "1.18.3";
+  # Pin OTP version - should match beam28Packages
+  otpVersion = "28.2";
+  elixirVersion = "1.18.4";
 in
 {
   # Environment variables
