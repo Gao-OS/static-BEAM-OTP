@@ -4,7 +4,11 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-Static BEAM builds fully static Erlang/OTP and Elixir binaries using musl libc. The resulting binaries have zero dynamic dependencies and run on any Linux distribution (Debian, Alpine, BusyBox, scratch containers).
+**STATUS: Work in Progress**
+
+Static BEAM aims to build fully static Erlang/OTP and Elixir binaries using musl libc. The resulting binaries would have zero dynamic dependencies and run on any Linux distribution (Debian, Alpine, BusyBox, scratch containers).
+
+**Current Issue**: The nixpkgs musl/static Erlang cross-compilation is broken due to missing bootstrap Erlang configuration. See README.md for details.
 
 ## Commands
 

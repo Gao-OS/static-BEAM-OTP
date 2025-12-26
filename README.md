@@ -2,9 +2,13 @@
 
 Build fully static Erlang/OTP and Elixir using musl libc with Nix.
 
-The resulting binaries have **no dynamic dependencies** and run on any Linux distribution including Debian, Alpine, BusyBox, and even `scratch` containers.
+**STATUS: Work in Progress** - The nixpkgs musl/static Erlang builds currently fail due to missing bootstrap Erlang configuration in cross-compilation. See [Known Issues](#known-issues) below.
 
-## Features
+## Goal
+
+The goal is to produce binaries that have **no dynamic dependencies** and run on any Linux distribution including Debian, Alpine, BusyBox, and even `scratch` containers.
+
+## Planned Features
 
 - **Truly Static**: BEAM VM compiled with musl libc, no glibc dependencies
 - **Portable**: Same binary works on Debian, Ubuntu, Alpine, BusyBox, scratch
@@ -171,6 +175,28 @@ All dependencies are statically linked:
 - **Erlang/OTP**: 28.2
 - **Elixir**: 1.18.4
 - **musl libc**: Latest from nixpkgs
+
+## Known Issues
+
+The static build currently fails due to issues in nixpkgs' musl/static Erlang cross-compilation:
+
+1. **Missing Bootstrap Erlang**: All nixpkgs musl Erlang variants (`pkgsCross.musl64.erlang`, `pkgsStatic.erlang`, `beamMinimalPackages`, etc.) fail with:
+   ```
+   No usable Erlang/OTP system for the build machine found!
+   Cannot cross compile without such a system.
+   ```
+   This is because the derivations don't include a bootstrap Erlang in their `nativeBuildInputs`.
+
+2. **wxWidgets Dependencies**: The full Erlang package tries to build wxWidgets, which pulls in complex dependencies (webkit, libglvnd) that don't build on musl.
+
+3. **Static Linking Complexity**: When adding `--enable-static-nifs` and `--enable-static-drivers`, cross-compilation of NIF C code fails to find `erl_nif.h`.
+
+### Potential Workarounds
+
+- Build inside an Alpine Linux container (native musl, no cross-compilation)
+- Use Docker multi-stage builds
+- Wait for nixpkgs to fix the musl Erlang cross-compilation setup
+- File an issue upstream at https://github.com/NixOS/nixpkgs/issues
 
 ## License
 
