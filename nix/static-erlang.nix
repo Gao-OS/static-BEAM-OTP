@@ -90,7 +90,11 @@ pkgsStatic.stdenv.mkDerivation rec {
     done
 
     echo "=== OpenSSL merged directory structure ==="
-    ls -laR $OPENSSL_MERGED/
+    ls -la $OPENSSL_MERGED/lib/
+    echo "=== Verifying static libs exist ==="
+    test -f $OPENSSL_MERGED/lib/libcrypto.a && echo "libcrypto.a exists" || echo "libcrypto.a MISSING"
+    test -f $OPENSSL_MERGED/lib/libssl.a && echo "libssl.a exists" || echo "libssl.a MISSING"
+    file $OPENSSL_MERGED/lib/libcrypto.a || true
 
     ./otp_build autoconf
 
