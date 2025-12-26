@@ -67,31 +67,38 @@ pkgsStatic.stdenv.mkDerivation rec {
     # Set up cross-compilation environment
     export erl_xcomp_sysroot="${pkgsStatic.stdenv.cc.libc}"
 
+    # Debug: show OpenSSL package structure
+    echo "=== OpenSSL dev structure ==="
+    find ${openssl-static.dev} -maxdepth 3 -type d 2>/dev/null
+    echo "=== OpenSSL out structure ==="
+    find ${openssl-static.out}/lib -name "*.a" 2>/dev/null
+
     # Create merged OpenSSL directory with proper structure
-    # Erlang expects headers in include/ and libs in lib/
     export OPENSSL_MERGED=$NIX_BUILD_TOP/openssl-merged
     mkdir -p $OPENSSL_MERGED/lib
     mkdir -p $OPENSSL_MERGED/include
 
-    # Copy include files (from dev output)
-    if [ -d "${openssl-static.dev}/include/openssl" ]; then
-      cp -rL ${openssl-static.dev}/include/openssl $OPENSSL_MERGED/include/
-    fi
+    # Copy all include files from dev output
+    cp -rL ${openssl-static.dev}/include/* $OPENSSL_MERGED/include/ || true
 
-    # Copy static libraries (from out output)
-    cp -L ${openssl-static.out}/lib/libcrypto.a $OPENSSL_MERGED/lib/
-    cp -L ${openssl-static.out}/lib/libssl.a $OPENSSL_MERGED/lib/
+    # Copy all static libraries from out output
+    for lib in ${openssl-static.out}/lib/*.a; do
+      if [ -f "$lib" ]; then
+        cp -L "$lib" $OPENSSL_MERGED/lib/
+        echo "Copied: $lib"
+      fi
+    done
 
     echo "=== OpenSSL merged directory structure ==="
-    find $OPENSSL_MERGED -type f | head -20
+    ls -laR $OPENSSL_MERGED/
 
     ./otp_build autoconf
 
     substituteInPlace configure \
       --replace 'STATIC_CFLAGS=""' 'STATIC_CFLAGS="-static"'
 
-    # Add SSL configuration with explicit lib subdirectory
-    export configureFlags="$configureFlags --with-ssl=$OPENSSL_MERGED --with-ssl-lib-subdir=lib"
+    # Add SSL configuration
+    export configureFlags="$configureFlags --with-ssl=$OPENSSL_MERGED"
   '';
 
   configureFlags = [
