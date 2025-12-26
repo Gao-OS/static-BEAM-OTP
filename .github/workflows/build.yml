@@ -7,52 +7,25 @@ on:
     branches: [main]
   workflow_dispatch:
 
-env:
-  NIXPKGS_ALLOW_UNFREE: 1
-
 jobs:
-  build-erlang:
-    name: Build Static Erlang/OTP
+  build-static-beam:
+    name: Build Static Erlang/OTP (Alpine/musl)
     runs-on: ubuntu-latest
-    # Build currently fails due to nixpkgs musl cross-compilation issues
-    # See README.md Known Issues section
-    continue-on-error: true
     steps:
-      - name: Free disk space
-        run: |
-          # Remove large pre-installed packages to free up space for Nix builds
-          sudo rm -rf /usr/share/dotnet
-          sudo rm -rf /opt/ghc
-          sudo rm -rf /usr/local/share/boost
-          sudo rm -rf /usr/local/lib/android
-          sudo rm -rf /opt/hostedtoolcache/CodeQL
-          df -h
-
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Install Nix
-        uses: cachix/install-nix-action@v27
-        with:
-          nix_path: nixpkgs=channel:nixos-unstable
-          extra_nix_config: |
-            experimental-features = nix-command flakes
-            accept-flake-config = true
-
-      - name: Setup Cachix
-        uses: cachix/cachix-action@v15
-        with:
-          name: devenv
-          authToken: '${{ secrets.CACHIX_AUTH_TOKEN }}'
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
 
       - name: Build Static Erlang
         run: |
-          nix-build nix/static-erlang.nix -o result-erlang
+          docker build --target erlang -o ./static-erlang .
 
       - name: Verify Static Linking
         run: |
           echo "=== Checking beam.smp ==="
-          BEAM_SMP=$(find result-erlang -name "beam.smp" -type f | head -1)
+          BEAM_SMP=$(find static-erlang -name "beam.smp" -type f | head -1)
           if [ -n "$BEAM_SMP" ]; then
             file "$BEAM_SMP"
             ldd "$BEAM_SMP" 2>&1 || echo "Not a dynamic executable (good!)"
@@ -60,26 +33,17 @@ jobs:
 
           echo ""
           echo "=== Checking erlexec ==="
-          ERLEXEC=$(find result-erlang -name "erlexec" -type f | head -1)
+          ERLEXEC=$(find static-erlang -name "erlexec" -type f | head -1)
           if [ -n "$ERLEXEC" ]; then
             file "$ERLEXEC"
             ldd "$ERLEXEC" 2>&1 || echo "Not a dynamic executable (good!)"
           fi
 
-      - name: Test Erlang
-        run: |
-          result-erlang/bin/erl -noshell -eval '
-            io:format("OTP Release: ~s~n", [erlang:system_info(otp_release)]),
-            io:format("ERTS Version: ~s~n", [erlang:system_info(version)]),
-            io:format("Architecture: ~s~n", [erlang:system_info(system_architecture)]),
-            halt().
-          '
-
       - name: Package Erlang
         run: |
           mkdir -p dist
-          cp -rL result-erlang dist/static-erlang
-          cd dist && tar -czvf static-erlang-${{ github.ref_name }}-linux-x86_64.tar.gz static-erlang
+          mv static-erlang dist/
+          cd dist && tar -czvf static-erlang-linux-x86_64.tar.gz static-erlang
 
       - name: Upload Erlang Artifact
         uses: actions/upload-artifact@v4
@@ -88,10 +52,37 @@ jobs:
           path: dist/static-erlang-*.tar.gz
           retention-days: 7
 
-  docker-test:
-    name: Test in Docker
+  build-static-elixir:
+    name: Build Static Elixir (Alpine/musl)
     runs-on: ubuntu-latest
-    needs: build-erlang
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build Static Elixir
+        run: |
+          docker build --target elixir -o ./static-elixir .
+
+      - name: Package Elixir
+        run: |
+          mkdir -p dist
+          mv static-elixir dist/
+          cd dist && tar -czvf static-elixir-linux-x86_64.tar.gz static-elixir
+
+      - name: Upload Elixir Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: static-elixir-linux-x86_64
+          path: dist/static-elixir-*.tar.gz
+          retention-days: 7
+
+  docker-test:
+    name: Test Portability
+    runs-on: ubuntu-latest
+    needs: build-static-beam
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -115,10 +106,23 @@ jobs:
 
       - name: Test on Alpine
         run: |
-          docker run --rm -v $(pwd)/static-beam:/opt/beam alpine:3.19 \
+          docker run --rm -v $(pwd)/static-beam:/opt/beam alpine:3.21 \
             /opt/beam/bin/erl -noshell -eval 'io:format("Erlang ~s on Alpine~n", [erlang:system_info(otp_release)]), halt().'
 
       - name: Test on BusyBox
         run: |
           docker run --rm -v $(pwd)/static-beam:/opt/beam busybox:musl \
             /opt/beam/bin/erl -noshell -eval 'io:format("Erlang ~s on BusyBox~n", [erlang:system_info(otp_release)]), halt().'
+
+      - name: Test Crypto and SSL
+        run: |
+          docker run --rm -v $(pwd)/static-beam:/opt/beam alpine:3.21 \
+            /opt/beam/bin/erl -noshell -eval '
+              application:start(crypto),
+              io:format("Crypto: OK~n"),
+              application:start(asn1),
+              application:start(public_key),
+              application:start(ssl),
+              io:format("SSL: OK~n"),
+              halt().
+            '

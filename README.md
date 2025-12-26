@@ -1,18 +1,16 @@
 # Static BEAM
 
-Build fully static Erlang/OTP and Elixir using musl libc with Nix.
-
-**STATUS: Work in Progress** - The nixpkgs musl/static Erlang builds currently fail due to missing bootstrap Erlang configuration in cross-compilation. See [Known Issues](#known-issues) below.
+Build fully static Erlang/OTP and Elixir using Alpine Linux and musl libc.
 
 ## Goal
 
-The goal is to produce binaries that have **no dynamic dependencies** and run on any Linux distribution including Debian, Alpine, BusyBox, and even `scratch` containers.
+Produce binaries with **no dynamic dependencies** that run on any Linux distribution including Debian, Alpine, BusyBox, and even `scratch` containers.
 
-## Planned Features
+## Features
 
 - **Truly Static**: BEAM VM compiled with musl libc, no glibc dependencies
 - **Portable**: Same binary works on Debian, Ubuntu, Alpine, BusyBox, scratch
-- **Nix-based**: Reproducible builds with pinned dependencies
+- **Docker-based**: Builds inside Alpine container (native musl, no cross-compilation)
 - **Complete**: Includes crypto, SSL, and all core OTP applications
 - **Mix Releases**: Use static ERTS in your Elixir releases
 
@@ -20,18 +18,29 @@ The goal is to produce binaries that have **no dynamic dependencies** and run on
 
 ### Prerequisites
 
-- [Nix](https://nixos.org/download.html)
-- [devenv](https://devenv.sh/)
+- [Docker](https://docs.docker.com/get-docker/)
+- [devenv](https://devenv.sh/) (optional, for development environment)
 
-### Enter Development Environment
+### Build with Docker directly
 
 ```bash
-devenv shell
+# Build static Erlang/OTP
+docker build --target erlang -o ./static-erlang .
+
+# Build static Elixir
+docker build --target elixir -o ./static-elixir .
+
+# Build and test
+docker build -t static-beam .
+docker run --rm static-beam
 ```
 
-### Build Static BEAM
+### Build with devenv
 
 ```bash
+# Enter development environment
+devenv shell
+
 # Build static Erlang/OTP
 sbeam build erlang
 
@@ -57,13 +66,13 @@ sbeam verify
 sbeam test
 
 # Or manually test on specific distros
-docker run --rm -v $(pwd)/static-beam:/opt/beam debian:bookworm-slim \
+docker run --rm -v $(pwd)/result:/opt/beam debian:bookworm-slim \
   /opt/beam/bin/erl -noshell -eval 'io:format("Hello from Debian!~n"), halt().'
 
-docker run --rm -v $(pwd)/static-beam:/opt/beam alpine:3.19 \
+docker run --rm -v $(pwd)/result:/opt/beam alpine:3.21 \
   /opt/beam/bin/erl -noshell -eval 'io:format("Hello from Alpine!~n"), halt().'
 
-docker run --rm -v $(pwd)/static-beam:/opt/beam busybox:musl \
+docker run --rm -v $(pwd)/result:/opt/beam busybox:musl \
   /opt/beam/bin/erl -noshell -eval 'io:format("Hello from BusyBox!~n"), halt().'
 ```
 
@@ -128,18 +137,28 @@ ENTRYPOINT ["/app/bin/my_app"]
 CMD ["start"]
 ```
 
+## How It Works
+
+The build uses a multi-stage Docker approach:
+
+1. **Alpine Builder**: Compiles Erlang/OTP from source inside Alpine Linux (native musl)
+2. **Static Linking**: Uses `LDFLAGS="-static"` and static library variants
+3. **Export Stage**: Extracts binaries to host via `docker build -o`
+
+This avoids cross-compilation complexity by building in a native musl environment.
+
 ## Project Structure
 
 ```
 static-beam/
+├── Dockerfile             # Multi-stage Alpine build
 ├── devenv.nix             # Development environment and sbeam command
 ├── nix/
-│   ├── static-erlang.nix  # Static Erlang/OTP derivation
-│   └── static-elixir.nix  # Static Elixir derivation
+│   ├── static-erlang.nix  # (Legacy) Nix-based static build attempt
+│   └── static-elixir.nix  # (Legacy) Nix-based static Elixir
 ├── example/               # Example Elixir project
 │   ├── mix.exs
 │   └── lib/
-├── Dockerfile             # Multi-distro test
 └── README.md
 ```
 
@@ -151,7 +170,6 @@ static-beam/
 --enable-static-nifs       # Build NIFs as static
 --enable-static-drivers    # Build drivers as static
 --disable-dynamic-ssl-lib  # Static SSL
---disable-shared           # No shared libraries
 --without-javac            # Skip Java
 --without-wx               # Skip wxWidgets
 --without-odbc             # Skip ODBC
@@ -172,31 +190,9 @@ All dependencies are statically linked:
 
 ## Versions
 
-- **Erlang/OTP**: 28.2
-- **Elixir**: 1.18.4
-- **musl libc**: Latest from nixpkgs
-
-## Known Issues
-
-The static build currently fails due to issues in nixpkgs' musl/static Erlang cross-compilation:
-
-1. **Missing Bootstrap Erlang**: All nixpkgs musl Erlang variants (`pkgsCross.musl64.erlang`, `pkgsStatic.erlang`, `beamMinimalPackages`, etc.) fail with:
-   ```
-   No usable Erlang/OTP system for the build machine found!
-   Cannot cross compile without such a system.
-   ```
-   This is because the derivations don't include a bootstrap Erlang in their `nativeBuildInputs`.
-
-2. **wxWidgets Dependencies**: The full Erlang package tries to build wxWidgets, which pulls in complex dependencies (webkit, libglvnd) that don't build on musl.
-
-3. **Static Linking Complexity**: When adding `--enable-static-nifs` and `--enable-static-drivers`, cross-compilation of NIF C code fails to find `erl_nif.h`.
-
-### Potential Workarounds
-
-- Build inside an Alpine Linux container (native musl, no cross-compilation)
-- Use Docker multi-stage builds
-- Wait for nixpkgs to fix the musl Erlang cross-compilation setup
-- File an issue upstream at https://github.com/NixOS/nixpkgs/issues
+- **Erlang/OTP**: 27.2
+- **Elixir**: 1.18.1
+- **Alpine**: 3.21
 
 ## License
 

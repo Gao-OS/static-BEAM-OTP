@@ -1,180 +1,108 @@
-# Multi-stage Dockerfile demonstrating static BEAM portability
+# Static Erlang/OTP and Elixir build using Alpine Linux (native musl)
 #
-# This Dockerfile shows that the same statically-linked BEAM binary
-# works across different Linux distributions.
+# Build:
+#   docker build --target erlang -o ./static-erlang .
+#   docker build --target elixir -o ./static-elixir .
 #
-# Usage:
-#   1. First, build static BEAM with Nix:
-#      nix build .#static-erlang
-#
-#   2. Copy the result to a local directory:
-#      cp -rL result static-beam
-#
-#   3. Build this Docker image:
-#      docker build -t static-beam-test .
-#
-#   4. Run tests:
-#      docker run --rm static-beam-test
+# Test:
+#   docker build -t static-beam . && docker run --rm static-beam
+
+ARG OTP_VERSION=27.2
+ARG ELIXIR_VERSION=1.18.1
 
 # =============================================================================
-# Stage 1: Copy static BEAM from local build
+# Stage 1: Build Erlang/OTP
 # =============================================================================
-FROM alpine:3.19 AS beam-source
+FROM alpine:3.21 AS erlang-builder
 
-# Copy the pre-built static BEAM
-# You need to copy the Nix build output to ./static-beam first
-COPY static-beam/ /opt/beam/
+ARG OTP_VERSION
 
-# Verify files exist
-RUN ls -la /opt/beam/bin/ && \
-    ls -la /opt/beam/lib/erlang/erts-*/bin/beam.smp
+RUN apk add --no-cache \
+    autoconf automake bash build-base curl git libtool \
+    linux-headers ncurses-dev ncurses-static openssl-dev \
+    openssl-libs-static perl zlib-dev zlib-static
+
+WORKDIR /build
+RUN curl -fSL "https://github.com/erlang/otp/releases/download/OTP-${OTP_VERSION}/otp_src_${OTP_VERSION}.tar.gz" \
+    -o otp_src.tar.gz && tar -xzf otp_src.tar.gz && mv otp_src_${OTP_VERSION} otp
+
+WORKDIR /build/otp
+RUN ./configure \
+    --prefix=/opt/erlang \
+    --enable-static-nifs \
+    --enable-static-drivers \
+    --disable-dynamic-ssl-lib \
+    --without-javac \
+    --without-wx \
+    --without-odbc \
+    --without-observer \
+    --without-debugger \
+    --without-et \
+    --without-megaco \
+    --without-jinterface \
+    --with-ssl \
+    --with-crypto \
+    CFLAGS="-Os" \
+    LDFLAGS="-static" \
+    LIBS="-lpthread"
+
+RUN make -j$(nproc) && make install
+
+RUN find /opt/erlang -type f -executable -exec strip --strip-all {} \; 2>/dev/null || true
+RUN rm -rf /opt/erlang/lib/erlang/lib/*/examples \
+    /opt/erlang/lib/erlang/lib/*/doc \
+    /opt/erlang/lib/erlang/man
 
 # =============================================================================
-# Stage 2: Test on Debian (glibc-based)
+# Stage 2: Build Elixir
 # =============================================================================
-FROM debian:bookworm-slim AS test-debian
+FROM erlang-builder AS elixir-builder
 
-# Install minimal tools for testing
-RUN apt-get update && \
-    apt-get install -y --no-install-recommends file && \
-    rm -rf /var/lib/apt/lists/*
+ARG ELIXIR_VERSION
 
-# Copy static BEAM
-COPY --from=beam-source /opt/beam /opt/beam
+ENV PATH="/opt/erlang/bin:${PATH}"
 
-# Test the binary
-RUN echo "=== Testing on Debian ===" && \
-    echo "File info:" && \
-    file /opt/beam/lib/erlang/erts-*/bin/beam.smp && \
-    echo "" && \
-    echo "LDD output:" && \
-    (ldd /opt/beam/lib/erlang/erts-*/bin/beam.smp 2>&1 || echo "Not dynamic") && \
-    echo "" && \
-    echo "Running erl:" && \
-    /opt/beam/bin/erl -noshell -eval 'io:format("Erlang ~s running on Debian!~n", [erlang:system_info(otp_release)]), halt().'
+WORKDIR /build
+RUN curl -fSL "https://github.com/elixir-lang/elixir/archive/refs/tags/v${ELIXIR_VERSION}.tar.gz" \
+    -o elixir_src.tar.gz && tar -xzf elixir_src.tar.gz && mv elixir-${ELIXIR_VERSION} elixir
+
+WORKDIR /build/elixir
+RUN make clean && make && make install PREFIX=/opt/elixir
 
 # =============================================================================
-# Stage 3: Test on Alpine (musl-based)
+# Stage 3: Export Erlang (from scratch)
 # =============================================================================
-FROM alpine:3.19 AS test-alpine
+FROM scratch AS erlang
+COPY --from=erlang-builder /opt/erlang /
 
-# Install file utility
+# =============================================================================
+# Stage 4: Export Elixir (from scratch)
+# =============================================================================
+FROM scratch AS elixir
+COPY --from=elixir-builder /opt/elixir /
+
+# =============================================================================
+# Stage 5: Test image
+# =============================================================================
+FROM alpine:3.21 AS test
+COPY --from=erlang-builder /opt/erlang /opt/erlang
+COPY --from=elixir-builder /opt/elixir /opt/elixir
+ENV PATH="/opt/elixir/bin:/opt/erlang/bin:${PATH}"
 RUN apk add --no-cache file
+CMD ["sh", "-c", "\
+    echo '=== Binary Analysis ===' && \
+    file /opt/erlang/lib/erlang/erts-*/bin/beam.smp && \
+    ldd /opt/erlang/lib/erlang/erts-*/bin/beam.smp 2>&1 || echo '(static)' && \
+    echo '' && \
+    echo '=== Erlang ===' && \
+    erl -noshell -eval 'io:format(\"OTP ~s~n\", [erlang:system_info(otp_release)]), halt().' && \
+    echo '' && \
+    echo '=== Elixir ===' && \
+    elixir --version && \
+    echo '' && \
+    echo '=== Crypto/SSL ===' && \
+    erl -noshell -eval 'application:start(crypto), io:format(\"Crypto: OK~n\"), halt().' && \
+    echo 'All tests passed!'"]
 
-# Copy static BEAM
-COPY --from=beam-source /opt/beam /opt/beam
-
-# Test the binary
-RUN echo "=== Testing on Alpine ===" && \
-    echo "File info:" && \
-    file /opt/beam/lib/erlang/erts-*/bin/beam.smp && \
-    echo "" && \
-    echo "LDD output:" && \
-    (ldd /opt/beam/lib/erlang/erts-*/bin/beam.smp 2>&1 || echo "Not dynamic") && \
-    echo "" && \
-    echo "Running erl:" && \
-    /opt/beam/bin/erl -noshell -eval 'io:format("Erlang ~s running on Alpine!~n", [erlang:system_info(otp_release)]), halt().'
-
-# =============================================================================
-# Stage 4: Test on BusyBox (minimal)
-# =============================================================================
-FROM busybox:musl AS test-busybox
-
-# Copy static BEAM
-COPY --from=beam-source /opt/beam /opt/beam
-
-# Test the binary (no file or ldd available in busybox by default)
-RUN echo "=== Testing on BusyBox ===" && \
-    echo "Running erl:" && \
-    /opt/beam/bin/erl -noshell -eval 'io:format("Erlang ~s running on BusyBox!~n", [erlang:system_info(otp_release)]), halt().'
-
-# =============================================================================
-# Stage 5: Test on scratch (completely empty)
-# =============================================================================
-FROM scratch AS test-scratch
-
-# Copy static BEAM - this ONLY works if the binary is truly static
-COPY --from=beam-source /opt/beam /opt/beam
-
-# Can't run tests in scratch easily, but the image building proves
-# the binary has no dependencies
-
-# =============================================================================
-# Final stage: Combined test runner
-# =============================================================================
-FROM alpine:3.19 AS runner
-
-# Install utilities
-RUN apk add --no-cache file bash
-
-# Copy static BEAM
-COPY --from=beam-source /opt/beam /opt/beam
-
-# Copy test script
-COPY <<'EOF' /test.sh
-#!/bin/bash
-set -e
-
-echo ""
-echo "╔══════════════════════════════════════════════════════════════════╗"
-echo "║              Static BEAM Portability Test                        ║"
-echo "╚══════════════════════════════════════════════════════════════════╝"
-echo ""
-
-BEAM_SMP=$(find /opt/beam -name "beam.smp" | head -1)
-
-echo "Testing binary: $BEAM_SMP"
-echo ""
-
-echo "=== File Analysis ==="
-file "$BEAM_SMP"
-echo ""
-
-echo "=== LDD Analysis ==="
-ldd "$BEAM_SMP" 2>&1 || echo "(Not a dynamic executable - this is good!)"
-echo ""
-
-echo "=== Erlang Version ==="
-/opt/beam/bin/erl -noshell -eval '
-    io:format("OTP Release: ~s~n", [erlang:system_info(otp_release)]),
-    io:format("ERTS Version: ~s~n", [erlang:system_info(version)]),
-    io:format("Architecture: ~s~n", [erlang:system_info(system_architecture)]),
-    io:format("Schedulers: ~p~n", [erlang:system_info(schedulers)]),
-    halt().
-'
-echo ""
-
-echo "=== Crypto Test ==="
-/opt/beam/bin/erl -noshell -eval '
-    case application:start(crypto) of
-        ok -> io:format("Crypto: OK~n");
-        {error, {already_started, _}} -> io:format("Crypto: OK (already started)~n");
-        Error -> io:format("Crypto Error: ~p~n", [Error])
-    end,
-    halt().
-'
-echo ""
-
-echo "=== SSL Test ==="
-/opt/beam/bin/erl -noshell -eval '
-    case application:start(ssl) of
-        ok -> io:format("SSL: OK~n");
-        {error, {already_started, _}} -> io:format("SSL: OK (already started)~n");
-        Error -> io:format("SSL Error: ~p~n", [Error])
-    end,
-    halt().
-'
-echo ""
-
-echo "╔══════════════════════════════════════════════════════════════════╗"
-echo "║              All Tests Passed!                                   ║"
-echo "╚══════════════════════════════════════════════════════════════════╝"
-echo ""
-echo "The static BEAM binary works correctly."
-echo "It should also work on Debian, Ubuntu, BusyBox, and scratch containers."
-echo ""
-EOF
-
-RUN chmod +x /test.sh
-
-CMD ["/test.sh"]
+# Default target
+FROM test

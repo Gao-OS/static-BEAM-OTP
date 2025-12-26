@@ -4,9 +4,9 @@ let
   pkgs-stable = import inputs.nixpkgs-stable { system = pkgs.stdenv.system; };
   pkgs-unstable = import inputs.nixpkgs-unstable { system = pkgs.stdenv.system; };
 
-  # Pin OTP version - should match beam28Packages
-  otpVersion = "28.2";
-  elixirVersion = "1.18.4";
+  # Pin OTP version - should match Dockerfile ARG values
+  otpVersion = "27.2";
+  elixirVersion = "1.18.1";
 in
 {
   # Environment variables
@@ -86,23 +86,29 @@ in
     log_warning() { echo -e "''${YELLOW}[WARN]''${NC} $*"; }
     log_error() { echo -e "''${RED}[FAIL]''${NC} $*"; }
 
-    _check_nix() {
-      if ! command -v nix &> /dev/null; then
-        log_error "Nix is not installed"
+    _check_docker() {
+      if ! command -v docker &> /dev/null; then
+        log_error "Docker is not installed"
+        exit 1
+      fi
+      if ! docker info &> /dev/null; then
+        log_error "Docker daemon is not running"
         exit 1
       fi
     }
 
     _build_erlang() {
-      log_info "Building static Erlang/OTP with musl..."
-      nix-build "$STATIC_BEAM_ROOT/nix/static-erlang.nix" -o "$STATIC_BEAM_ROOT/result"
+      log_info "Building static Erlang/OTP with Alpine/musl..."
+      docker build --target erlang -o "$STATIC_BEAM_ROOT/result" "$STATIC_BEAM_ROOT"
       log_success "Static Erlang built: $STATIC_BEAM_ROOT/result"
     }
 
     _build_elixir() {
-      log_info "Building static Elixir with musl..."
-      nix-build "$STATIC_BEAM_ROOT/nix/static-elixir.nix" -o "$STATIC_BEAM_ROOT/result"
-      log_success "Static Elixir built: $STATIC_BEAM_ROOT/result"
+      log_info "Building static Elixir with Alpine/musl..."
+      docker build --target elixir -o "$STATIC_BEAM_ROOT/result-elixir" "$STATIC_BEAM_ROOT"
+      docker build --target erlang -o "$STATIC_BEAM_ROOT/result" "$STATIC_BEAM_ROOT"
+      log_success "Static Elixir built: $STATIC_BEAM_ROOT/result-elixir"
+      log_success "Static Erlang built: $STATIC_BEAM_ROOT/result"
     }
 
     _verify_binary() {
@@ -195,24 +201,33 @@ in
     }
 
     _test_docker() {
+      _check_docker
       log_info "Testing static BEAM in Docker containers..."
 
-      if [ ! -L "$STATIC_BEAM_ROOT/result" ]; then
+      if [ ! -d "$STATIC_BEAM_ROOT/result" ]; then
         log_error "No build found. Run 'sbeam build' first"
         exit 1
       fi
 
-      # Copy result for Docker
-      rm -rf "$STATIC_BEAM_ROOT/static-beam"
-      cp -rL "$STATIC_BEAM_ROOT/result" "$STATIC_BEAM_ROOT/static-beam"
-
       log_info "Building test container..."
-      docker build -t static-beam-test "$STATIC_BEAM_ROOT"
+      docker build --target test -t static-beam-test "$STATIC_BEAM_ROOT"
 
       log_info "Running tests..."
       docker run --rm static-beam-test
 
-      log_success "Docker tests passed!"
+      log_info "Testing on Debian..."
+      docker run --rm -v "$STATIC_BEAM_ROOT/result:/opt/beam" debian:bookworm-slim \
+        /opt/beam/bin/erl -noshell -eval 'io:format("Erlang ~s on Debian~n", [erlang:system_info(otp_release)]), halt().'
+
+      log_info "Testing on Alpine..."
+      docker run --rm -v "$STATIC_BEAM_ROOT/result:/opt/beam" alpine:3.21 \
+        /opt/beam/bin/erl -noshell -eval 'io:format("Erlang ~s on Alpine~n", [erlang:system_info(otp_release)]), halt().'
+
+      log_info "Testing on BusyBox..."
+      docker run --rm -v "$STATIC_BEAM_ROOT/result:/opt/beam" busybox:musl \
+        /opt/beam/bin/erl -noshell -eval 'io:format("Erlang ~s on BusyBox~n", [erlang:system_info(otp_release)]), halt().'
+
+      log_success "All Docker tests passed!"
     }
 
     _clean() {
@@ -226,7 +241,7 @@ in
 
     case "$cmd" in
       build)
-        _check_nix
+        _check_docker
         target="''${1:-all}"
         case "$target" in
           erlang)
