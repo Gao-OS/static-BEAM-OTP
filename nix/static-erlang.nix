@@ -66,10 +66,21 @@ pkgsStatic.stdenv.mkDerivation rec {
   preConfigure = ''
     # Set up cross-compilation environment
     export erl_xcomp_sysroot="${pkgsStatic.stdenv.cc.libc}"
+
+    # Create merged OpenSSL directory with standard layout
+    # Erlang expects headers in $SSL_ROOT/include and libs in $SSL_ROOT/lib
+    export OPENSSL_MERGED=$NIX_BUILD_TOP/openssl-merged
+    mkdir -p $OPENSSL_MERGED
+    ln -sf ${openssl-static.dev}/include $OPENSSL_MERGED/include
+    ln -sf ${openssl-static.out}/lib $OPENSSL_MERGED/lib
+
     ./otp_build autoconf
 
     substituteInPlace configure \
       --replace 'STATIC_CFLAGS=""' 'STATIC_CFLAGS="-static"'
+
+    # Add SSL path to configure flags
+    export configureFlags="$configureFlags --with-ssl=$OPENSSL_MERGED"
   '';
 
   configureFlags = [
@@ -89,10 +100,7 @@ pkgsStatic.stdenv.mkDerivation rec {
     "--without-et"
     "--without-jinterface"
 
-    # SSL configuration for cross-compilation
-    "--with-ssl=${openssl-static.dev}"
-    "--with-ssl-incl=${openssl-static.dev}"
-    "--with-ssl-lib=${openssl-static.out}/lib"
+    # SSL is configured via preConfigure with merged directory
 
     # Terminal and compression
     "--with-termcap"
