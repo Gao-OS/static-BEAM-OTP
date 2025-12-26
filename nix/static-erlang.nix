@@ -67,33 +67,31 @@ pkgsStatic.stdenv.mkDerivation rec {
     # Set up cross-compilation environment
     export erl_xcomp_sysroot="${pkgsStatic.stdenv.cc.libc}"
 
-    # Debug: show what's in the OpenSSL directories
-    echo "=== OpenSSL dev include ==="
-    ls -la ${openssl-static.dev}/include/ || true
-    echo "=== OpenSSL out lib ==="
-    ls -la ${openssl-static.out}/lib/ || true
-    echo "=== Looking for static libs ==="
-    find ${openssl-static.out} -name "*.a" 2>/dev/null || echo "No .a files found in out"
-    find ${openssl-static} -name "*.a" 2>/dev/null || echo "No .a files found in base"
-
-    # Create merged OpenSSL directory by copying instead of symlinking
+    # Create merged OpenSSL directory with proper structure
+    # Erlang expects headers in include/ and libs in lib/
     export OPENSSL_MERGED=$NIX_BUILD_TOP/openssl-merged
     mkdir -p $OPENSSL_MERGED/lib
-    cp -rL ${openssl-static.dev}/include $OPENSSL_MERGED/
-    cp -L ${openssl-static.out}/lib/*.a $OPENSSL_MERGED/lib/ 2>/dev/null || true
-    cp -rL ${openssl-static.out}/lib/pkgconfig $OPENSSL_MERGED/lib/ 2>/dev/null || true
+    mkdir -p $OPENSSL_MERGED/include
 
-    echo "=== Merged directory ==="
-    ls -la $OPENSSL_MERGED/
-    ls -la $OPENSSL_MERGED/lib/ || true
+    # Copy include files (from dev output)
+    if [ -d "${openssl-static.dev}/include/openssl" ]; then
+      cp -rL ${openssl-static.dev}/include/openssl $OPENSSL_MERGED/include/
+    fi
+
+    # Copy static libraries (from out output)
+    cp -L ${openssl-static.out}/lib/libcrypto.a $OPENSSL_MERGED/lib/
+    cp -L ${openssl-static.out}/lib/libssl.a $OPENSSL_MERGED/lib/
+
+    echo "=== OpenSSL merged directory structure ==="
+    find $OPENSSL_MERGED -type f | head -20
 
     ./otp_build autoconf
 
     substituteInPlace configure \
       --replace 'STATIC_CFLAGS=""' 'STATIC_CFLAGS="-static"'
 
-    # Add SSL path to configure flags
-    export configureFlags="$configureFlags --with-ssl=$OPENSSL_MERGED"
+    # Add SSL configuration with explicit lib subdirectory
+    export configureFlags="$configureFlags --with-ssl=$OPENSSL_MERGED --with-ssl-lib-subdir=lib"
   '';
 
   configureFlags = [
