@@ -1,16 +1,15 @@
 # Static Erlang/OTP build with musl libc
 #
-# Uses beamMinimal28Packages which is Erlang without wxwidgets.
-# The base nixpkgs musl Erlang should produce binaries linked against musl.
+# Uses beamMinimal27Packages (OTP 27) which may have better
+# cross-compilation support than OTP 28.
 
 { pkgs ? import <nixpkgs> {} }:
 
 let
-  # Use musl-based cross compilation - nixpkgs handles the complexity
+  # Use musl-based cross compilation
   pkgsMusl = pkgs.pkgsCross.musl64;
 
-  # Use the minimal Erlang package without wxwidgets
-  # Don't add extra static flags that cause cross-compilation issues
-  erlangMusl = pkgsMusl.beamMinimal28Packages.erlang;
+  # Use OTP 27 minimal (no wxwidgets) - may have better musl support
+  erlangMusl = pkgsMusl.beamMinimal27Packages.erlang;
 
 in erlangMusl
