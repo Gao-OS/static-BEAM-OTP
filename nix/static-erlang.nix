@@ -44,13 +44,17 @@ pkgsMusl.stdenv.mkDerivation rec {
   ];
 
   buildInputs = with pkgsMusl; [
-    ncurses
+    ncurses.dev
     zlib
   ];
 
   # Force static linking
-  LDFLAGS = "-static";
-  CFLAGS = "-static -Os";
+  LDFLAGS = "-static -L${pkgsMusl.ncurses}/lib";
+  CFLAGS = "-static -Os -I${pkgsMusl.ncurses.dev}/include";
+
+  # Help configure find ncurses
+  TERMINFO_DIRS = "${pkgsMusl.ncurses}/share/terminfo";
+  LIBS = "-lncurses";
 
   postPatch = ''
     patchShebangs .
