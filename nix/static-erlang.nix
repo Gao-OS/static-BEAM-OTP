@@ -103,6 +103,13 @@ pkgsStatic.stdenv.mkDerivation rec {
 
     # Add SSL configuration
     export configureFlags="$configureFlags --with-ssl=$OPENSSL_MERGED"
+
+    # Explicitly set crypto/ssl library paths to help configure find them
+    export CRYPTO_LIBS="-L$OPENSSL_MERGED/lib -lcrypto"
+    export SSL_LIBS="-L$OPENSSL_MERGED/lib -lssl -lcrypto"
+
+    # Also set cache variables to help cross-compilation
+    export ac_cv_lib_crypto_CRYPTO_new_ex_data=yes
   '';
 
   configureFlags = [
