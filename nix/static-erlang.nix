@@ -1,7 +1,8 @@
 # Static Erlang/OTP build with musl libc
 #
 # Uses nixpkgs' existing musl cross-compilation support.
-# This leverages the well-tested pkgsCross.musl64 infrastructure.
+# Disables wxwidgets and other GUI components that have complex
+# dependencies which don't build well on musl.
 
 { pkgs ? import <nixpkgs> {} }:
 
@@ -9,12 +10,23 @@ let
   # Use musl-based cross compilation - nixpkgs handles the complexity
   pkgsMusl = pkgs.pkgsCross.musl64;
 
-  # Get the Erlang package with musl - nixpkgs already knows how to build this
-  erlangMusl = pkgsMusl.erlang.overrideAttrs (oldAttrs: {
+  # Get the Erlang package with musl, disabling wxwidgets
+  erlangMusl = pkgsMusl.erlang.override {
+    # Disable wxwidgets - it pulls in webkit and other complex deps that fail on musl
+    wxGTK = null;
+    wxSupport = false;
+  };
+
+  # Apply additional static build configuration
+  erlangStatic = erlangMusl.overrideAttrs (oldAttrs: {
     # Add static build flags
     configureFlags = (oldAttrs.configureFlags or []) ++ [
       "--enable-static-nifs"
       "--enable-static-drivers"
+      "--without-wx"
+      "--without-observer"
+      "--without-debugger"
+      "--without-et"
     ];
 
     # Ensure static linking is enabled
@@ -36,4 +48,4 @@ let
     '';
   });
 
-in erlangMusl
+in erlangStatic
