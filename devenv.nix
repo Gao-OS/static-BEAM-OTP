@@ -3,11 +3,17 @@
 let
   pkgs-stable = import inputs.nixpkgs-stable { system = pkgs.stdenv.system; };
   pkgs-unstable = import inputs.nixpkgs-unstable { system = pkgs.stdenv.system; };
+
+  # Pin OTP version - update this when upgrading
+  otpVersion = "28.0";
+  elixirVersion = "1.18.3";
 in
 {
   # Environment variables
   env = {
     STATIC_BEAM_ROOT = builtins.toString ./.;
+    OTP_VERSION = otpVersion;
+    ELIXIR_VERSION = elixirVersion;
   };
 
   # Dependencies
@@ -52,6 +58,8 @@ in
     export STATIC_ERTS_PATH="$STATIC_BEAM_ROOT/result/lib/erlang"
 
     figlet -w 80 "Static BEAM" | lolcat
+    echo ""
+    echo "Target: OTP-$OTP_VERSION (Elixir $ELIXIR_VERSION)"
     echo ""
     echo "Commands:"
     echo "  sbeam build [erlang|elixir|all]  - Build static BEAM"
