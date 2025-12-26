@@ -1,3 +1,15 @@
+# Static Erlang/OTP build with musl libc
+#
+# NOTE: Building a fully static Erlang/OTP is complex due to:
+# - Cross-compilation requirements for static musl builds
+# - OpenSSL static library detection issues during configure
+# - JIT/NIF compilation complications
+#
+# This derivation is a work in progress. For now, it builds Erlang with musl
+# but without SSL/crypto support for simplicity.
+#
+# TODO: Resolve SSL static linking issues for full crypto support
+
 { pkgs ? import <nixpkgs> {} }:
 
 let
@@ -5,13 +17,8 @@ let
   erlangVersion = "28.2";
   erlangSha256 = "sha256-59IUTZrjDqmz3qVQOS3Ni35fD6TzosPnRSMsuR6vF4k=";
 
-  # Use pkgsMusl for native musl compilation (not cross)
-  pkgsMusl = pkgs.pkgsMusl;
-
-  # Static dependencies from musl pkgs
-  openssl-static = pkgsMusl.pkgsStatic.openssl;
-  ncurses-static = pkgsMusl.pkgsStatic.ncurses;
-  zlib-static = pkgsMusl.pkgsStatic.zlib;
+  # Use musl-based cross compilation
+  pkgsMusl = pkgs.pkgsCross.musl64;
 
 in
 pkgsMusl.stdenv.mkDerivation rec {
@@ -25,33 +32,32 @@ pkgsMusl.stdenv.mkDerivation rec {
     sha256 = erlangSha256;
   };
 
-  nativeBuildInputs = with pkgsMusl; [
+  nativeBuildInputs = with pkgs; [
     autoconf
     automake
     libtool
     perl
     gnumake
     m4
+    # Bootstrap Erlang for cross-compilation
+    erlang
   ];
 
-  buildInputs = [
-    openssl-static
-    ncurses-static
-    zlib-static
+  buildInputs = with pkgsMusl; [
+    ncurses
+    zlib
   ];
 
   # Force static linking
-  NIX_CFLAGS_COMPILE = "-static";
-  NIX_LDFLAGS = "-static";
   LDFLAGS = "-static";
   CFLAGS = "-static -Os";
 
   postPatch = ''
-    # Fix shebangs that reference /usr/bin/env
     patchShebangs .
   '';
 
   preConfigure = ''
+    export erl_xcomp_sysroot="${pkgsMusl.stdenv.cc.libc}"
     ./otp_build autoconf
 
     substituteInPlace configure \
@@ -62,10 +68,12 @@ pkgsMusl.stdenv.mkDerivation rec {
     # Static build flags
     "--enable-static-nifs"
     "--enable-static-drivers"
-    "--disable-dynamic-ssl-lib"
     "--disable-shared"
 
-    # Disable unnecessary components for smaller binary
+    # Disable SSL for now (complex cross-compilation issues)
+    "--without-ssl"
+
+    # Disable GUI/external components
     "--without-javac"
     "--without-wx"
     "--without-odbc"
@@ -74,9 +82,6 @@ pkgsMusl.stdenv.mkDerivation rec {
     "--without-debugger"
     "--without-et"
     "--without-jinterface"
-
-    # SSL configuration
-    "--with-ssl=${openssl-static.dev}"
 
     # Terminal and compression
     "--with-termcap"
@@ -88,7 +93,7 @@ pkgsMusl.stdenv.mkDerivation rec {
     "--enable-threads"
     "--enable-dirty-schedulers"
 
-    # Disable JIT for static builds (can cause issues)
+    # Disable JIT for static builds
     "--disable-jit"
 
     # Disable incompatible features
@@ -105,12 +110,7 @@ pkgsMusl.stdenv.mkDerivation rec {
 
   postBuild = ''
     echo "Checking if BEAM is statically linked..."
-    if file erts/emulator/beam/beam.smp 2>/dev/null | grep -q "statically linked"; then
-      echo "SUCCESS: beam.smp is statically linked"
-    else
-      echo "WARNING: beam.smp may not be fully static"
-      file erts/emulator/beam/beam.smp || true
-    fi
+    file erts/emulator/beam/beam.smp || true
   '';
 
   postInstall = ''
@@ -133,7 +133,7 @@ pkgsMusl.stdenv.mkDerivation rec {
   dontDisableStatic = true;
 
   meta = with pkgs.lib; {
-    description = "Erlang/OTP ${version} built statically with musl libc";
+    description = "Erlang/OTP ${version} built statically with musl libc (without SSL)";
     homepage = "https://www.erlang.org/";
     license = licenses.asl20;
     platforms = [ "x86_64-linux" "aarch64-linux" ];
