@@ -19,6 +19,11 @@ let
       pkgs.erlang  # Bootstrap Erlang from host
     ];
 
+    # Patch shebangs in all scripts (especially utils/find_cross_ycf)
+    postPatch = (oldAttrs.postPatch or "") + ''
+      patchShebangs .
+    '';
+
     # Add configure flags to enable static NIFs/drivers
     configureFlags = (oldAttrs.configureFlags or []) ++ [
       "--enable-static-nifs"
