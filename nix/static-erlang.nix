@@ -14,6 +14,11 @@ let
 
   # Apply static build configuration
   erlangStatic = erlangMinimal.overrideAttrs (oldAttrs: {
+    # Add bootstrap Erlang for cross-compilation
+    nativeBuildInputs = (oldAttrs.nativeBuildInputs or []) ++ [
+      pkgs.erlang  # Bootstrap Erlang from host
+    ];
+
     # Add configure flags to enable static NIFs/drivers
     configureFlags = (oldAttrs.configureFlags or []) ++ [
       "--enable-static-nifs"
