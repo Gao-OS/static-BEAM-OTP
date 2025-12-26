@@ -51,6 +51,6 @@ include_erts: System.get_env("STATIC_ERTS_PATH")
 
 ## Versions
 
-- Erlang/OTP: 26.2.5
+- Erlang/OTP: 28.0
 - Elixir: 1.16.3
 - Development: beam28Packages

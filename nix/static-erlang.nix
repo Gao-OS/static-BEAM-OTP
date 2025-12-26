@@ -9,9 +9,9 @@ let
   ncurses-static = pkgsStatic.ncurses;
   zlib-static = pkgsStatic.zlib;
 
-  # Erlang version
-  erlangVersion = "26.2.5";
-  erlangSha256 = "sha256-tUAvzkTE51gT4kS7voEZZpsMKVyBQR+wgk6mI0s1Vac=";
+  # Erlang version - should match beam28Packages in devenv.nix
+  erlangVersion = "28.0";
+  erlangSha256 = "sha256-ZqND4bOp0vUkBKznhojwsN3MygDf3I7OLkR05EUnSRg=";
 
 in
 pkgsStatic.stdenv.mkDerivation rec {
