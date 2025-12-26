@@ -67,56 +67,21 @@ pkgsStatic.stdenv.mkDerivation rec {
     # Set up cross-compilation environment
     export erl_xcomp_sysroot="${pkgsStatic.stdenv.cc.libc}"
 
-    # Debug: show OpenSSL package structure
-    echo "=== OpenSSL dev structure ==="
-    find ${openssl-static.dev} -maxdepth 3 -type d 2>/dev/null
-    echo "=== OpenSSL out structure ==="
-    find ${openssl-static.out}/lib -name "*.a" 2>/dev/null
-
-    # Create merged OpenSSL directory with proper structure
-    export OPENSSL_MERGED=$NIX_BUILD_TOP/openssl-merged
-    mkdir -p $OPENSSL_MERGED/lib
-    mkdir -p $OPENSSL_MERGED/include
-
-    # Copy all include files from dev output
-    cp -rL ${openssl-static.dev}/include/* $OPENSSL_MERGED/include/ || true
-
-    # Copy all static libraries from out output
-    for lib in ${openssl-static.out}/lib/*.a; do
-      if [ -f "$lib" ]; then
-        cp -L "$lib" $OPENSSL_MERGED/lib/
-        echo "Copied: $lib"
-      fi
-    done
-
-    echo "=== OpenSSL merged directory structure ==="
-    ls -la $OPENSSL_MERGED/lib/
-    echo "=== Verifying static libs exist ==="
-    test -f $OPENSSL_MERGED/lib/libcrypto.a && echo "libcrypto.a exists" || echo "libcrypto.a MISSING"
-    test -f $OPENSSL_MERGED/lib/libssl.a && echo "libssl.a exists" || echo "libssl.a MISSING"
-    file $OPENSSL_MERGED/lib/libcrypto.a || true
-
     ./otp_build autoconf
 
     substituteInPlace configure \
       --replace 'STATIC_CFLAGS=""' 'STATIC_CFLAGS="-static"'
 
-    # Add SSL configuration
-    export configureFlags="$configureFlags --with-ssl=$OPENSSL_MERGED"
-
-    # Explicitly set crypto/ssl library paths to help configure find them
-    export CRYPTO_LIBS="-L$OPENSSL_MERGED/lib -lcrypto"
-    export SSL_LIBS="-L$OPENSSL_MERGED/lib -lssl -lcrypto"
-
-    # Also set cache variables to help cross-compilation
-    export ac_cv_lib_crypto_CRYPTO_new_ex_data=yes
+    # Temporarily skip SSL to test if rest of build works
+    # TODO: Re-enable SSL after fixing link test issues
+    export configureFlags="$configureFlags --without-ssl"
   '';
 
   configureFlags = [
     # Static build flags
     "--enable-static-nifs"
     "--enable-static-drivers"
-    "--disable-dynamic-ssl-lib"
+    # "--disable-dynamic-ssl-lib"  # Commented out since SSL is disabled for now
     "--disable-shared"
 
     # Disable unnecessary components
