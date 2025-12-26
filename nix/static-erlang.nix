@@ -1,8 +1,7 @@
 # Static Erlang/OTP build with musl libc
 #
 # Uses nixpkgs' existing musl cross-compilation support.
-# Disables wxwidgets and other GUI components that have complex
-# dependencies which don't build well on musl.
+# Disables wxwidgets and other GUI components via configure flags.
 
 { pkgs ? import <nixpkgs> {} }:
 
@@ -10,16 +9,13 @@ let
   # Use musl-based cross compilation - nixpkgs handles the complexity
   pkgsMusl = pkgs.pkgsCross.musl64;
 
-  # Get the Erlang package with musl, disabling wxwidgets
-  erlangMusl = pkgsMusl.erlang.override {
-    # Disable wxwidgets - it pulls in webkit and other complex deps that fail on musl
-    wxGTK32 = null;
-    wxSupport = false;
-  };
+  # Override the Erlang package to disable wxwidgets and add static build flags
+  erlangStatic = pkgsMusl.erlang.overrideAttrs (oldAttrs: {
+    # Filter out wxGTK from buildInputs if present
+    buildInputs = builtins.filter (p: !(pkgs.lib.hasPrefix "wxwidgets" (p.pname or "")))
+      (oldAttrs.buildInputs or []);
 
-  # Apply additional static build configuration
-  erlangStatic = erlangMusl.overrideAttrs (oldAttrs: {
-    # Add static build flags
+    # Add configure flags to disable GUI components and enable static
     configureFlags = (oldAttrs.configureFlags or []) ++ [
       "--enable-static-nifs"
       "--enable-static-drivers"
@@ -27,6 +23,8 @@ let
       "--without-observer"
       "--without-debugger"
       "--without-et"
+      "--without-javac"
+      "--without-odbc"
     ];
 
     # Ensure static linking is enabled
@@ -37,7 +35,7 @@ let
       "STATIC_CFLAGS=-static"
     ];
 
-    # Post-install: verify and strip
+    # Post-install: strip binaries
     postInstall = (oldAttrs.postInstall or "") + ''
       echo ""
       echo "Static Erlang/OTP built with musl libc!"
