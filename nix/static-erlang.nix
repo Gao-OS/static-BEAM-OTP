@@ -67,12 +67,25 @@ pkgsStatic.stdenv.mkDerivation rec {
     # Set up cross-compilation environment
     export erl_xcomp_sysroot="${pkgsStatic.stdenv.cc.libc}"
 
-    # Create merged OpenSSL directory with standard layout
-    # Erlang expects headers in $SSL_ROOT/include and libs in $SSL_ROOT/lib
+    # Debug: show what's in the OpenSSL directories
+    echo "=== OpenSSL dev include ==="
+    ls -la ${openssl-static.dev}/include/ || true
+    echo "=== OpenSSL out lib ==="
+    ls -la ${openssl-static.out}/lib/ || true
+    echo "=== Looking for static libs ==="
+    find ${openssl-static.out} -name "*.a" 2>/dev/null || echo "No .a files found in out"
+    find ${openssl-static} -name "*.a" 2>/dev/null || echo "No .a files found in base"
+
+    # Create merged OpenSSL directory by copying instead of symlinking
     export OPENSSL_MERGED=$NIX_BUILD_TOP/openssl-merged
-    mkdir -p $OPENSSL_MERGED
-    ln -sf ${openssl-static.dev}/include $OPENSSL_MERGED/include
-    ln -sf ${openssl-static.out}/lib $OPENSSL_MERGED/lib
+    mkdir -p $OPENSSL_MERGED/lib
+    cp -rL ${openssl-static.dev}/include $OPENSSL_MERGED/
+    cp -L ${openssl-static.out}/lib/*.a $OPENSSL_MERGED/lib/ 2>/dev/null || true
+    cp -rL ${openssl-static.out}/lib/pkgconfig $OPENSSL_MERGED/lib/ 2>/dev/null || true
+
+    echo "=== Merged directory ==="
+    ls -la $OPENSSL_MERGED/
+    ls -la $OPENSSL_MERGED/lib/ || true
 
     ./otp_build autoconf
 
