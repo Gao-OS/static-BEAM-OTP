@@ -1,20 +1,20 @@
 { pkgs ? import <nixpkgs> {} }:
 
 let
-  # Static musl-based pkgs
-  pkgsStatic = pkgs.pkgsCross.musl64.pkgsStatic;
-
-  # Static dependencies
-  openssl-static = pkgsStatic.openssl;
-  ncurses-static = pkgsStatic.ncurses;
-  zlib-static = pkgsStatic.zlib;
-
   # Erlang version - should match beam28Packages in devenv.nix
   erlangVersion = "28.2";
   erlangSha256 = "sha256-59IUTZrjDqmz3qVQOS3Ni35fD6TzosPnRSMsuR6vF4k=";
 
+  # Use pkgsMusl for native musl compilation (not cross)
+  pkgsMusl = pkgs.pkgsMusl;
+
+  # Static dependencies from musl pkgs
+  openssl-static = pkgsMusl.pkgsStatic.openssl;
+  ncurses-static = pkgsMusl.pkgsStatic.ncurses;
+  zlib-static = pkgsMusl.pkgsStatic.zlib;
+
 in
-pkgsStatic.stdenv.mkDerivation rec {
+pkgsMusl.stdenv.mkDerivation rec {
   pname = "erlang-static";
   version = erlangVersion;
 
@@ -25,15 +25,13 @@ pkgsStatic.stdenv.mkDerivation rec {
     sha256 = erlangSha256;
   };
 
-  nativeBuildInputs = with pkgs; [
+  nativeBuildInputs = with pkgsMusl; [
     autoconf
     automake
     libtool
     perl
     gnumake
     m4
-    # Bootstrap Erlang for cross-compilation
-    erlang
   ];
 
   buildInputs = [
@@ -43,25 +41,10 @@ pkgsStatic.stdenv.mkDerivation rec {
   ];
 
   # Force static linking
-  NIX_CFLAGS_COMPILE = toString [
-    "-static"
-    "-I${openssl-static.dev}/include"
-    "-I${ncurses-static.dev}/include"
-    "-I${zlib-static.dev}/include"
-  ];
-
-  NIX_LDFLAGS = toString [
-    "-static"
-    "-L${openssl-static.out}/lib"
-    "-L${ncurses-static.out}/lib"
-    "-L${zlib-static.out}/lib"
-  ];
-
-  LDFLAGS = "-static -L${openssl-static.out}/lib -L${ncurses-static.out}/lib -L${zlib-static.out}/lib";
+  NIX_CFLAGS_COMPILE = "-static";
+  NIX_LDFLAGS = "-static";
+  LDFLAGS = "-static";
   CFLAGS = "-static -Os";
-
-  # Cross-compilation configuration
-  erl_xcomp_sysroot = pkgsStatic.stdenv.cc.libc;
 
   postPatch = ''
     # Fix shebangs that reference /usr/bin/env
@@ -69,27 +52,20 @@ pkgsStatic.stdenv.mkDerivation rec {
   '';
 
   preConfigure = ''
-    # Set up cross-compilation environment
-    export erl_xcomp_sysroot="${pkgsStatic.stdenv.cc.libc}"
-
     ./otp_build autoconf
 
     substituteInPlace configure \
       --replace 'STATIC_CFLAGS=""' 'STATIC_CFLAGS="-static"'
-
-    # Temporarily skip SSL to test if rest of build works
-    # TODO: Re-enable SSL after fixing link test issues
-    export configureFlags="$configureFlags --without-ssl"
   '';
 
   configureFlags = [
     # Static build flags
     "--enable-static-nifs"
     "--enable-static-drivers"
-    # "--disable-dynamic-ssl-lib"  # Commented out since SSL is disabled for now
+    "--disable-dynamic-ssl-lib"
     "--disable-shared"
 
-    # Disable unnecessary components
+    # Disable unnecessary components for smaller binary
     "--without-javac"
     "--without-wx"
     "--without-odbc"
@@ -99,7 +75,8 @@ pkgsStatic.stdenv.mkDerivation rec {
     "--without-et"
     "--without-jinterface"
 
-    # SSL is configured via preConfigure with merged directory
+    # SSL configuration
+    "--with-ssl=${openssl-static.dev}"
 
     # Terminal and compression
     "--with-termcap"
@@ -110,6 +87,9 @@ pkgsStatic.stdenv.mkDerivation rec {
     "--enable-smp-support"
     "--enable-threads"
     "--enable-dirty-schedulers"
+
+    # Disable JIT for static builds (can cause issues)
+    "--disable-jit"
 
     # Disable incompatible features
     "--disable-hipe"
