@@ -52,33 +52,6 @@ jobs:
           path: dist/static-erlang-*.tar.gz
           retention-days: 7
 
-  build-static-elixir:
-    name: Build Static Elixir (Alpine/musl)
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
-      - name: Build Static Elixir
-        run: |
-          docker build --target elixir -o ./static-elixir .
-
-      - name: Package Elixir
-        run: |
-          mkdir -p dist
-          mv static-elixir dist/
-          cd dist && tar -czvf static-elixir-linux-x86_64.tar.gz static-elixir
-
-      - name: Upload Elixir Artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: static-elixir-linux-x86_64
-          path: dist/static-elixir-*.tar.gz
-          retention-days: 7
-
   docker-test:
     name: Test Portability
     runs-on: ubuntu-latest
@@ -101,23 +74,23 @@ jobs:
 
       - name: Test on Debian
         run: |
-          docker run --rm -v $(pwd)/static-beam:/opt/beam debian:bookworm-slim \
-            /opt/beam/bin/erl -noshell -eval 'io:format("Erlang ~s on Debian~n", [erlang:system_info(otp_release)]), halt().'
+          docker run --rm -v $(pwd)/static-beam:/opt/erlang debian:bookworm-slim \
+            /opt/erlang/bin/erl -noshell -eval 'io:format("Erlang ~s on Debian~n", [erlang:system_info(otp_release)]), halt().'
 
       - name: Test on Alpine
         run: |
-          docker run --rm -v $(pwd)/static-beam:/opt/beam alpine:3.21 \
-            /opt/beam/bin/erl -noshell -eval 'io:format("Erlang ~s on Alpine~n", [erlang:system_info(otp_release)]), halt().'
+          docker run --rm -v $(pwd)/static-beam:/opt/erlang alpine:3.21 \
+            /opt/erlang/bin/erl -noshell -eval 'io:format("Erlang ~s on Alpine~n", [erlang:system_info(otp_release)]), halt().'
 
       - name: Test on BusyBox
         run: |
-          docker run --rm -v $(pwd)/static-beam:/opt/beam busybox:musl \
-            /opt/beam/bin/erl -noshell -eval 'io:format("Erlang ~s on BusyBox~n", [erlang:system_info(otp_release)]), halt().'
+          docker run --rm -v $(pwd)/static-beam:/opt/erlang busybox:musl \
+            /opt/erlang/bin/erl -noshell -eval 'io:format("Erlang ~s on BusyBox~n", [erlang:system_info(otp_release)]), halt().'
 
       - name: Test Crypto and SSL
         run: |
-          docker run --rm -v $(pwd)/static-beam:/opt/beam alpine:3.21 \
-            /opt/beam/bin/erl -noshell -eval '
+          docker run --rm -v $(pwd)/static-beam:/opt/erlang alpine:3.21 \
+            /opt/erlang/bin/erl -noshell -eval '
               application:start(crypto),
               io:format("Crypto: OK~n"),
               application:start(asn1),

@@ -216,16 +216,16 @@ in
       docker run --rm static-beam-test
 
       log_info "Testing on Debian..."
-      docker run --rm -v "$STATIC_BEAM_ROOT/result:/opt/beam" debian:bookworm-slim \
-        /opt/beam/bin/erl -noshell -eval 'io:format("Erlang ~s on Debian~n", [erlang:system_info(otp_release)]), halt().'
+      docker run --rm -v "$STATIC_BEAM_ROOT/result:/opt/erlang" debian:bookworm-slim \
+        /opt/erlang/bin/erl -noshell -eval 'io:format("Erlang ~s on Debian~n", [erlang:system_info(otp_release)]), halt().'
 
       log_info "Testing on Alpine..."
-      docker run --rm -v "$STATIC_BEAM_ROOT/result:/opt/beam" alpine:3.21 \
-        /opt/beam/bin/erl -noshell -eval 'io:format("Erlang ~s on Alpine~n", [erlang:system_info(otp_release)]), halt().'
+      docker run --rm -v "$STATIC_BEAM_ROOT/result:/opt/erlang" alpine:3.21 \
+        /opt/erlang/bin/erl -noshell -eval 'io:format("Erlang ~s on Alpine~n", [erlang:system_info(otp_release)]), halt().'
 
       log_info "Testing on BusyBox..."
-      docker run --rm -v "$STATIC_BEAM_ROOT/result:/opt/beam" busybox:musl \
-        /opt/beam/bin/erl -noshell -eval 'io:format("Erlang ~s on BusyBox~n", [erlang:system_info(otp_release)]), halt().'
+      docker run --rm -v "$STATIC_BEAM_ROOT/result:/opt/erlang" busybox:musl \
+        /opt/erlang/bin/erl -noshell -eval 'io:format("Erlang ~s on BusyBox~n", [erlang:system_info(otp_release)]), halt().'
 
       log_success "All Docker tests passed!"
     }
