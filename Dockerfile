@@ -27,13 +27,15 @@ RUN curl -fSL "https://github.com/erlang/otp/releases/download/OTP-${OTP_VERSION
     -o otp_src.tar.gz && tar -xzf otp_src.tar.gz && mv otp_src_${OTP_VERSION} otp
 
 WORKDIR /build/otp
+# Verify static SSL libs exist
+RUN ls -la /usr/lib/libssl.a /usr/lib/libcrypto.a
+
 # Configure for static build
 # Note: musl doesn't have libdl, it's built into libc
 RUN ./configure \
     --prefix=/opt/erlang \
     --enable-static-nifs \
     --enable-static-drivers \
-    --disable-dynamic-ssl-lib \
     --without-javac \
     --without-wx \
     --without-odbc \
@@ -42,9 +44,9 @@ RUN ./configure \
     --without-et \
     --without-megaco \
     --without-jinterface \
-    --with-ssl=/usr \
+    --with-ssl \
     --with-crypto \
-    CFLAGS="-Os -static" \
+    CFLAGS="-Os" \
     LDFLAGS="-static" \
     LIBS="-lssl -lcrypto -lz"
 
