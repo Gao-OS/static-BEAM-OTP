@@ -14,25 +14,47 @@ Build fully static Erlang/OTP using Alpine Linux and musl libc.
 Download pre-built static Erlang from [GitHub Releases](https://github.com/Gao-OS/static-BEAM-OTP/releases):
 
 ```bash
-# Download latest release
-curl -LO https://github.com/Gao-OS/static-BEAM-OTP/releases/latest/download/static-erlang-otp-27.2-linux-x86_64.tar.gz
+# Set version and architecture
+OTP_VERSION="27.2"
+ARCH="amd64"  # or "arm64"
+
+# Download
+curl -LO "https://github.com/Gao-OS/static-BEAM-OTP/releases/download/OTP-${OTP_VERSION}/static-erlang-otp-${OTP_VERSION}-linux-${ARCH}.tar.gz"
 
 # Extract
-tar -xzf static-erlang-otp-27.2-linux-x86_64.tar.gz
+tar -xzf static-erlang-otp-${OTP_VERSION}-linux-${ARCH}.tar.gz
 
 # Move to /opt/erlang (required path)
 sudo mv static-erlang /opt/erlang
 ```
 
-Or download via script:
+### Available Architectures
+
+| Architecture | File |
+|--------------|------|
+| x86_64 (Intel/AMD) | `static-erlang-otp-{version}-linux-amd64.tar.gz` |
+| arm64 (Apple Silicon, AWS Graviton) | `static-erlang-otp-{version}-linux-arm64.tar.gz` |
+
+### Download Script
 
 ```bash
 #!/bin/bash
-VERSION="v1.0.0"  # Check releases for latest
-OTP="27.2"
+set -e
 
-curl -L "https://github.com/Gao-OS/static-BEAM-OTP/releases/download/${VERSION}/static-erlang-otp-${OTP}-linux-x86_64.tar.gz" | \
-  tar -xz -C /opt && mv /opt/static-erlang /opt/erlang
+OTP_VERSION="${1:-27.2}"
+ARCH=$(uname -m)
+case "$ARCH" in
+  x86_64) ARCH="amd64" ;;
+  aarch64) ARCH="arm64" ;;
+esac
+
+echo "Downloading static Erlang/OTP ${OTP_VERSION} for ${ARCH}..."
+curl -L "https://github.com/Gao-OS/static-BEAM-OTP/releases/download/OTP-${OTP_VERSION}/static-erlang-otp-${OTP_VERSION}-linux-${ARCH}.tar.gz" | \
+  tar -xz -C /tmp
+
+sudo rm -rf /opt/erlang
+sudo mv /tmp/static-erlang /opt/erlang
+echo "Installed to /opt/erlang"
 ```
 
 ## Quick Start
@@ -83,7 +105,12 @@ ldd /opt/erlang/lib/erlang/erts-*/bin/beam.smp
 # In your project directory
 mkdir -p priv/static-erts
 
-curl -L "https://github.com/Gao-OS/static-BEAM-OTP/releases/latest/download/static-erlang-otp-27.2-linux-x86_64.tar.gz" | \
+# For amd64
+curl -L "https://github.com/Gao-OS/static-BEAM-OTP/releases/download/OTP-27.2/static-erlang-otp-27.2-linux-amd64.tar.gz" | \
+  tar -xz -C priv/static-erts --strip-components=1
+
+# For arm64
+curl -L "https://github.com/Gao-OS/static-BEAM-OTP/releases/download/OTP-27.2/static-erlang-otp-27.2-linux-arm64.tar.gz" | \
   tar -xz -C priv/static-erts --strip-components=1
 ```
 
@@ -142,14 +169,15 @@ MIX_ENV=prod mix release
 
 ```dockerfile
 # Dockerfile for your Elixir app
-FROM elixir:1.18-alpine AS builder
+FROM --platform=$BUILDPLATFORM elixir:1.18-alpine AS builder
+ARG TARGETARCH
 
 WORKDIR /app
 COPY . .
 
-# Download static ERTS
+# Download static ERTS for target architecture
 RUN mkdir -p priv/static-erts && \
-    wget -qO- "https://github.com/Gao-OS/static-BEAM-OTP/releases/latest/download/static-erlang-otp-27.2-linux-x86_64.tar.gz" | \
+    wget -qO- "https://github.com/Gao-OS/static-BEAM-OTP/releases/download/OTP-27.2/static-erlang-otp-27.2-linux-${TARGETARCH}.tar.gz" | \
     tar -xz -C priv/static-erts --strip-components=1
 
 # Build release
@@ -167,6 +195,11 @@ COPY --from=builder /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/
 
 ENTRYPOINT ["/app/bin/my_app"]
 CMD ["start"]
+```
+
+Build for multiple architectures:
+```bash
+docker buildx build --platform linux/amd64,linux/arm64 -t my_app .
 ```
 
 ### 5. Build and Run
@@ -243,19 +276,22 @@ sbeam test          # Test in Docker containers
 
 ## Creating a Release
 
-To create a new release:
+To create a new release (maintainers only):
 
 ```bash
-git tag v1.0.0
-git push origin v1.0.0
+# Tag format: OTP-{version}
+git tag OTP-27.2
+git push origin OTP-27.2
 ```
 
-GitHub Actions will automatically build and publish the release.
+GitHub Actions will automatically:
+1. Build for amd64 and arm64
+2. Test on Debian, Alpine, and BusyBox
+3. Create a GitHub Release with both architectures
 
 ## Known Limitations
 
 - **Mount path**: Must be at `/opt/erlang` (paths are compiled in)
-- **Architecture**: Currently only `linux-x86_64`
 - **Elixir**: Static Elixir build has SSL linking issues (use regular Elixir with static ERTS)
 
 ## License
