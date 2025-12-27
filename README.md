@@ -1,96 +1,80 @@
 # Static BEAM
 
-Build fully static Erlang/OTP and Elixir using Alpine Linux and musl libc.
-
-## Goal
-
-Produce binaries with **no dynamic dependencies** that run on any Linux distribution including Debian, Alpine, BusyBox, and even `scratch` containers.
+Build fully static Erlang/OTP using Alpine Linux and musl libc.
 
 ## Features
 
-- **Truly Static**: BEAM VM compiled with musl libc, no glibc dependencies
-- **Portable**: Same binary works on Debian, Ubuntu, Alpine, BusyBox, scratch
+- **Truly Static**: BEAM VM compiled with musl libc, no dynamic dependencies
+- **Portable**: Same binary runs on Debian, Ubuntu, Alpine, BusyBox, scratch containers
 - **Docker-based**: Builds inside Alpine container (native musl, no cross-compilation)
-- **Complete**: Includes crypto, SSL, and all core OTP applications
-- **Mix Releases**: Use static ERTS in your Elixir releases
+- **Complete**: Includes crypto, SSL, and core OTP applications
 
 ## Quick Start
 
-### Prerequisites
-
-- [Docker](https://docs.docker.com/get-docker/)
-- [devenv](https://devenv.sh/) (optional, for development environment)
-
-### Build with Docker directly
+### Build
 
 ```bash
-# Build static Erlang/OTP
+# Build static Erlang/OTP (outputs to ./static-erlang/)
 docker build --target erlang -o ./static-erlang .
 
-# Build static Elixir
-docker build --target elixir -o ./static-elixir .
-
-# Build and test
-docker build -t static-beam .
-docker run --rm static-beam
+# Build and run tests
+docker build -t static-beam . && docker run --rm static-beam
 ```
 
-### Build with devenv
+### Use
+
+**Important**: Mount at `/opt/erlang` (paths are compiled in).
+
+```bash
+# Run on Debian
+docker run --rm -v ./static-erlang:/opt/erlang debian:bookworm-slim \
+  /opt/erlang/bin/erl -noshell -eval 'io:format("Hello from Debian!~n"), halt().'
+
+# Run on Alpine
+docker run --rm -v ./static-erlang:/opt/erlang alpine:3.21 \
+  /opt/erlang/bin/erl -noshell -eval 'io:format("Hello from Alpine!~n"), halt().'
+
+# Run on BusyBox
+docker run --rm -v ./static-erlang:/opt/erlang busybox:musl \
+  /opt/erlang/bin/erl -noshell -eval 'io:format("Hello from BusyBox!~n"), halt().'
+
+# Run on scratch (minimal container)
+docker run --rm -v ./static-erlang:/opt/erlang scratch \
+  /opt/erlang/bin/erl -noshell -eval 'io:format("Hello from scratch!~n"), halt().'
+```
+
+### Verify Static Linking
+
+```bash
+# Check binary type
+file static-erlang/lib/erlang/erts-*/bin/beam.smp
+# Output: ELF 64-bit LSB executable, x86-64, statically linked
+
+# Verify no dynamic dependencies
+ldd static-erlang/lib/erlang/erts-*/bin/beam.smp
+# Output: not a dynamic executable
+```
+
+## Using with devenv
 
 ```bash
 # Enter development environment
 devenv shell
 
-# Build static Erlang/OTP
+# Build
 sbeam build erlang
 
-# Or build static Elixir (includes Erlang)
-sbeam build elixir
-
-# The result is in ./result
-ls -la result/bin/
-```
-
-### Verify Binaries are Static
-
-```bash
+# Verify
 sbeam verify
 
-# Output should show "statically linked"
-```
-
-### Test Portability
-
-```bash
-# Test in Docker containers
+# Test in containers
 sbeam test
-
-# Or manually test on specific distros
-docker run --rm -v $(pwd)/result:/opt/beam debian:bookworm-slim \
-  /opt/beam/bin/erl -noshell -eval 'io:format("Hello from Debian!~n"), halt().'
-
-docker run --rm -v $(pwd)/result:/opt/beam alpine:3.21 \
-  /opt/beam/bin/erl -noshell -eval 'io:format("Hello from Alpine!~n"), halt().'
-
-docker run --rm -v $(pwd)/result:/opt/beam busybox:musl \
-  /opt/beam/bin/erl -noshell -eval 'io:format("Hello from BusyBox!~n"), halt().'
 ```
-
-## Commands
-
-| Command | Description |
-|---------|-------------|
-| `sbeam build [erlang\|elixir\|all]` | Build static BEAM |
-| `sbeam verify [path]` | Verify binaries are static |
-| `sbeam test` | Test in Docker containers |
-| `sbeam clean` | Remove build artifacts |
-| `sbeam help` | Show help |
 
 ## Using Static ERTS in Elixir Releases
 
-### Configure mix.exs
-
 ```elixir
+# mix.exs
 defmodule MyApp.MixProject do
   use Mix.Project
 
@@ -98,101 +82,84 @@ defmodule MyApp.MixProject do
     [
       app: :my_app,
       version: "0.1.0",
-      elixir: "~> 1.15",
-      releases: releases()
-    ]
-  end
-
-  defp releases do
-    [
-      my_app: [
-        # Point to static ERTS from build
-        include_erts: System.get_env("STATIC_ERTS_PATH") ||
-                      "/path/to/result/lib/erlang",
-        strip_beams: true,
-        steps: [:assemble, :tar]
+      releases: [
+        my_app: [
+          include_erts: "/opt/erlang/lib/erlang",
+          steps: [:assemble, :tar]
+        ]
       ]
     ]
   end
 end
 ```
 
-### Build Release
-
-```bash
-# STATIC_ERTS_PATH is set automatically in devenv shell
-MIX_ENV=prod mix release
-
-# The release uses static ERTS
-```
-
 ### Deploy to Minimal Container
 
 ```dockerfile
 FROM scratch
-
 COPY _build/prod/rel/my_app /app
-
+COPY --from=builder /opt/erlang /opt/erlang
 ENTRYPOINT ["/app/bin/my_app"]
 CMD ["start"]
 ```
 
 ## How It Works
 
-The build uses a multi-stage Docker approach:
+```
+┌─────────────────────────────────────────────────────────────┐
+│  Alpine Linux (native musl)                                 │
+│  ┌───────────────────────────────────────────────────────┐  │
+│  │  Build Erlang/OTP from source                         │  │
+│  │  LDFLAGS="-static"                                    │  │
+│  │  --enable-static-nifs --enable-static-drivers         │  │
+│  └───────────────────────────────────────────────────────┘  │
+│                           ↓                                 │
+│  ┌───────────────────────────────────────────────────────┐  │
+│  │  Static binaries in /opt/erlang                       │  │
+│  │  - beam.smp (statically linked)                       │  │
+│  │  - erlexec, erl, erlc, etc.                          │  │
+│  └───────────────────────────────────────────────────────┘  │
+└─────────────────────────────────────────────────────────────┘
+                           ↓
+         docker build --target erlang -o ./static-erlang .
+                           ↓
+┌─────────────────────────────────────────────────────────────┐
+│  ./static-erlang/                                           │
+│  ├── bin/erl, erlc, ...                                    │
+│  └── lib/erlang/erts-15.2/bin/beam.smp (static!)           │
+└─────────────────────────────────────────────────────────────┘
+```
 
-1. **Alpine Builder**: Compiles Erlang/OTP from source inside Alpine Linux (native musl)
-2. **Static Linking**: Uses `LDFLAGS="-static"` and static library variants
-3. **Export Stage**: Extracts binaries to host via `docker build -o`
+## Versions
 
-This avoids cross-compilation complexity by building in a native musl environment.
+| Component | Version |
+|-----------|---------|
+| Erlang/OTP | 27.2 |
+| Alpine | 3.21 |
+| OpenSSL | 3.3.x (static) |
 
 ## Project Structure
 
 ```
 static-beam/
-├── Dockerfile             # Multi-stage Alpine build
-├── devenv.nix             # Development environment and sbeam command
-├── nix/
-│   ├── static-erlang.nix  # (Legacy) Nix-based static build attempt
-│   └── static-elixir.nix  # (Legacy) Nix-based static Elixir
-├── example/               # Example Elixir project
-│   ├── mix.exs
-│   └── lib/
+├── Dockerfile          # Multi-stage Alpine build
+├── devenv.nix          # Development environment + sbeam command
+├── .github/workflows/  # CI/CD
 └── README.md
 ```
 
-## Static Build Configuration
+## Dockerfile Targets
 
-### Erlang Configure Flags
+| Target | Description |
+|--------|-------------|
+| `erlang` | Export static Erlang to host |
+| `test` | Run verification tests |
+| (default) | Build and test |
 
-```bash
---enable-static-nifs       # Build NIFs as static
---enable-static-drivers    # Build drivers as static
---disable-dynamic-ssl-lib  # Static SSL
---without-javac            # Skip Java
---without-wx               # Skip wxWidgets
---without-odbc             # Skip ODBC
---without-megaco           # Skip Megaco
---without-observer         # Skip Observer
---without-debugger         # Skip Debugger
---without-et               # Skip Event Tracer
---without-jinterface       # Skip JInterface
-```
+## Known Limitations
 
-### Static Dependencies
-
-All dependencies are statically linked:
-
-- **OpenSSL**: Crypto and SSL support
-- **ncurses**: Terminal support
-- **zlib**: Compression support
-
-## Versions
-
-- **Erlang/OTP**: 27.2
-- **Elixir**: 1.18.1
-- **Alpine**: 3.21
+- **Mount path**: Must mount at `/opt/erlang` (paths are compiled in)
+- **Elixir**: Static Elixir build has SSL linking issues (WIP)
 
 ## License
 

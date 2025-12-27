@@ -1,57 +1,62 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+This file provides guidance to Claude Code when working with this repository.
 
 ## Project Overview
 
-Static BEAM builds fully static Erlang/OTP and Elixir binaries using Alpine Linux and musl libc. The resulting binaries have zero dynamic dependencies and run on any Linux distribution (Debian, Alpine, BusyBox, scratch containers).
+Static BEAM builds fully static Erlang/OTP binaries using Alpine Linux and musl libc. The resulting binaries have zero dynamic dependencies and run on any Linux distribution.
 
-## Commands
+## Build Commands
 
-Enter development environment:
 ```bash
-devenv shell
-```
-
-Build and verify static binaries:
-```bash
-sbeam build erlang      # Build static Erlang/OTP
-sbeam build elixir      # Build static Elixir (includes Erlang)
-sbeam verify            # Verify binaries are statically linked
-sbeam test              # Test in Docker containers (Debian/Alpine/BusyBox)
-sbeam clean             # Remove build artifacts
-```
-
-Direct Docker build (outside devenv):
-```bash
+# Build static Erlang (outputs to ./static-erlang/)
 docker build --target erlang -o ./static-erlang .
-docker build --target elixir -o ./static-elixir .
-docker build -t static-beam .
-docker run --rm static-beam
+
+# Build and run tests
+docker build -t static-beam . && docker run --rm static-beam
+```
+
+## Usage
+
+**Important**: Mount at `/opt/erlang` - paths are compiled in.
+
+```bash
+docker run --rm -v ./static-erlang:/opt/erlang debian:bookworm-slim \
+  /opt/erlang/bin/erl -noshell -eval 'io:format("Hello!~n"), halt().'
+```
+
+## devenv Commands
+
+```bash
+devenv shell           # Enter development environment
+sbeam build erlang     # Build static Erlang
+sbeam verify           # Verify binaries are static
+sbeam test             # Test in Docker containers
+sbeam clean            # Remove build artifacts
 ```
 
 ## Architecture
 
-- **Dockerfile**: Multi-stage Alpine Linux build. Compiles Erlang/OTP and Elixir from source inside native musl environment. Key configure flags: `--enable-static-nifs`, `--enable-static-drivers`, `--disable-dynamic-ssl-lib`, `LDFLAGS="-static"`. Export stages allow extracting binaries to host.
+- **Dockerfile**: Multi-stage Alpine build. Compiles Erlang/OTP from source with `LDFLAGS="-static"`, `--enable-static-nifs`, `--enable-static-drivers`. Exports via `docker build -o`.
 
-- **devenv.nix**: Development environment configuration using devenv. Defines the `sbeam` command which wraps Docker build commands. Uses `beam28Packages.{erlang,elixir}` for development tooling.
+- **devenv.nix**: Development environment with `sbeam` command wrapper.
 
-- **devenv.yaml**: Nix inputs configuration. Uses `nixpkgs-stable` (release-25.11) for reproducible builds.
+- **.github/workflows/build.yml**: CI that builds, verifies static linking, and tests on Debian/Alpine/BusyBox.
 
-- **nix/static-erlang.nix**: Legacy Nix-based static build attempt. Currently non-functional due to nixpkgs musl cross-compilation issues.
+## Key Files
 
-- **example/**: Example Elixir project demonstrating how to use static ERTS in mix releases via `include_erts` configuration.
-
-## Static ERTS in Elixir Releases
-
-The `STATIC_ERTS_PATH` environment variable is set automatically in devenv shell. Use it in mix.exs:
-```elixir
-include_erts: System.get_env("STATIC_ERTS_PATH")
-```
+| File | Purpose |
+|------|---------|
+| `Dockerfile` | Multi-stage static build |
+| `devenv.nix` | Dev environment + sbeam command |
+| `.github/workflows/build.yml` | CI/CD pipeline |
 
 ## Versions
 
 - Erlang/OTP: 27.2
-- Elixir: 1.18.1
 - Alpine: 3.21
-- Development: beam28Packages
+
+## Known Limitations
+
+- Must mount at `/opt/erlang` (compiled-in path)
+- Elixir static build has SSL linking issues (WIP)
