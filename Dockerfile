@@ -27,6 +27,8 @@ RUN curl -fSL "https://github.com/erlang/otp/releases/download/OTP-${OTP_VERSION
     -o otp_src.tar.gz && tar -xzf otp_src.tar.gz && mv otp_src_${OTP_VERSION} otp
 
 WORKDIR /build/otp
+# Configure for static build
+# Note: musl doesn't have libdl, it's built into libc
 RUN ./configure \
     --prefix=/opt/erlang \
     --enable-static-nifs \
@@ -40,11 +42,11 @@ RUN ./configure \
     --without-et \
     --without-megaco \
     --without-jinterface \
-    --with-ssl \
+    --with-ssl=/usr \
     --with-crypto \
-    CFLAGS="-Os" \
+    CFLAGS="-Os -static" \
     LDFLAGS="-static" \
-    LIBS="-lpthread"
+    LIBS="-lssl -lcrypto -lz"
 
 RUN make -j$(nproc) && make install
 
