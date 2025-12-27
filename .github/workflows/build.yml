@@ -43,8 +43,8 @@ jobs:
       - name: Get OTP Version
         id: otp_version
         run: |
-          OTP_VERSION=$(grep "ARG OTP_VERSION" Dockerfile | cut -d= -f2)
-          echo "version=$OTP_VERSION" >> $GITHUB_OUTPUT
+          OTP_VERSION=$(grep "^ARG OTP_VERSION=" Dockerfile | sed 's/ARG OTP_VERSION=//')
+          echo "version=${OTP_VERSION}" >> $GITHUB_OUTPUT
 
       - name: Package Erlang
         run: |
