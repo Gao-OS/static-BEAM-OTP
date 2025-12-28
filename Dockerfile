@@ -48,14 +48,14 @@ RUN ./configure \
     --with-ssl=/usr \
     CFLAGS="-Os"
 
-# Patch erts emulator Makefile for fully static linking
-# 1. Add static OpenSSL libs (crypto.a needs them)
-# 2. Add -static flag to emulator link command
-# 3. Add static C++ runtime for JIT
+# Patch Makefiles for fully static linking
+# 1. erts/emulator: beam.smp/beam.jit - add static OpenSSL libs and C++ runtime
+# 2. erts/etc: erlexec and other utilities - add -static flag
 RUN sed -i 's|$(LIBS)|$(LIBS) /usr/lib/libcrypto.a /usr/lib/libssl.a /usr/lib/libz.a|g' erts/emulator/*/Makefile && \
     sed -i 's|$(LDFLAGS)|$(LDFLAGS) -static|g' erts/emulator/*/Makefile && \
     sed -i 's|-lstdc++|-l:libstdc++.a|g' erts/emulator/*/Makefile && \
-    sed -i 's|-lm |-lm -l:libstdc++.a |g' erts/emulator/*/Makefile
+    sed -i 's|-lm |-lm -l:libstdc++.a |g' erts/emulator/*/Makefile && \
+    find erts/etc -name Makefile -exec sed -i 's|$(LDFLAGS)|$(LDFLAGS) -static|g' {} \;
 
 # Build
 RUN make -j$(nproc) && make install
