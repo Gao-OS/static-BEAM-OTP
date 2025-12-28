@@ -68,3 +68,10 @@ sbeam clean            # Remove build artifacts
 
 - Must mount at `/opt/erlang` (compiled-in path)
 - Elixir static build has SSL linking issues (WIP)
+
+## Active Technologies
+- Elixir 1.15+ (for demo app), YAML (for workflow) + Mix (Elixir build tool), GitHub Actions (001-e2e-test)
+- N/A (stateless workflow) (001-e2e-test)
+
+## Recent Changes
+- 001-e2e-test: Added Elixir 1.15+ (for demo app), YAML (for workflow) + Mix (Elixir build tool), GitHub Actions

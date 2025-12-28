@@ -274,6 +274,20 @@ sbeam test          # Test in Docker containers
 | Alpine | 3.21 |
 | OpenSSL | 3.3.x (static) |
 
+## E2E Testing
+
+Validate releases with the E2E test workflow:
+
+1. Go to **Actions** > **E2E Test**
+2. Click **Run workflow**
+3. Enter release tag (e.g., `OTP-27.2`)
+4. Click **Run workflow**
+
+The workflow tests both amd64 and arm64 architectures:
+- Downloads static Erlang from the release
+- Builds a demo Elixir app with the static ERTS
+- Verifies crypto, SSL, and BEAM operations work correctly
+
 ## Creating a Release
 
 To create a new release (maintainers only):
@@ -288,6 +302,8 @@ GitHub Actions will automatically:
 1. Build for amd64 and arm64
 2. Test on Debian, Alpine, and BusyBox
 3. Create a GitHub Release with both architectures
+
+After release, run the E2E test workflow to validate with a real Elixir application.
 
 ## Known Limitations
 
