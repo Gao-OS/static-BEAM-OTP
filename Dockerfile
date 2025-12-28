@@ -57,8 +57,9 @@ RUN sed -i 's|$(LIBS)|$(LIBS) /usr/lib/libcrypto.a /usr/lib/libssl.a /usr/lib/li
     sed -i 's|-lm |-lm -l:libstdc++.a |g' erts/emulator/*/Makefile && \
     find erts/etc -name Makefile -exec sed -i 's|$(LDFLAGS)|$(LDFLAGS) -static|g' {} \;
 
-# Build
-RUN make -j$(nproc) && make install
+# Build with limited parallelism to avoid race conditions in static NIF builds
+# (crypto.a and other static libs can race when built with high -j values)
+RUN make -j4 && make install
 
 RUN find /opt/erlang -type f -executable -exec strip --strip-all {} \; 2>/dev/null || true
 RUN rm -rf /opt/erlang/lib/erlang/lib/*/examples \
