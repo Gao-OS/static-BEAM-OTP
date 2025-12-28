@@ -32,6 +32,7 @@ RUN ls -la /usr/lib/libssl.a /usr/lib/libcrypto.a
 
 # Configure for static build
 # Note: musl doesn't have libdl, it's built into libc
+# OTP 28+ requires explicit SSL path for static builds
 RUN ./configure \
     --prefix=/opt/erlang \
     --enable-static-nifs \
@@ -44,10 +45,10 @@ RUN ./configure \
     --without-et \
     --without-megaco \
     --without-jinterface \
-    --with-ssl \
+    --with-ssl=/usr \
     --with-crypto \
-    CFLAGS="-Os" \
-    LDFLAGS="-static" \
+    CFLAGS="-Os -I/usr/include" \
+    LDFLAGS="-static -L/usr/lib" \
     LIBS="-lssl -lcrypto -lz"
 
 RUN make -j$(nproc) && make install
