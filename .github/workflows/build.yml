@@ -58,65 +58,56 @@ jobs:
       - name: Collect Build Info
         id: build_info
         run: |
-          # Move to /opt/erlang temporarily for the script
-          sudo mkdir -p /opt/erlang
-          sudo cp -r static-erlang/* /opt/erlang/
+          # Run build info collection inside Alpine container (same environment as build)
+          docker run --rm -v $(pwd)/static-erlang:/opt/erlang alpine:3.21 sh -c '
+            export PATH="/opt/erlang/bin:$PATH"
 
-          # Get accurate OTP release from runtime
-          OTP_RELEASE=$(/opt/erlang/bin/erl -noshell -eval 'io:format("~s", [erlang:system_info(otp_release)]), halt().')
-          echo "otp_release=${OTP_RELEASE}" >> $GITHUB_OUTPUT
+            echo "otp_release=$(/opt/erlang/bin/erl -noshell -eval "io:format(\"~s\", [erlang:system_info(otp_release)]), halt().")"
+            echo "erts_version=$(/opt/erlang/bin/erl -noshell -eval "io:format(\"~s\", [erlang:system_info(version)]), halt().")"
+            echo "system_arch=$(/opt/erlang/bin/erl -noshell -eval "io:format(\"~s\", [erlang:system_info(system_architecture)]), halt().")"
+            echo "word_size=$(/opt/erlang/bin/erl -noshell -eval "io:format(\"~p\", [erlang:system_info(wordsize) * 8]), halt().")"
 
-          # Get ERTS version
-          ERTS_VERSION=$(/opt/erlang/bin/erl -noshell -eval 'io:format("~s", [erlang:system_info(version)]), halt().')
-          echo "erts_version=${ERTS_VERSION}" >> $GITHUB_OUTPUT
+            # Crypto info
+            crypto_info=$(/opt/erlang/bin/erl -noshell -eval "
+              application:start(crypto),
+              Algos = crypto:supports(),
+              HashAlgos = proplists:get_value(hashs, Algos, []),
+              CipherAlgos = proplists:get_value(ciphers, Algos, []),
+              PKAlgos = proplists:get_value(public_keys, Algos, []),
+              io:format(\"~p hash algorithms, ~p ciphers, ~p public key algorithms\", [length(HashAlgos), length(CipherAlgos), length(PKAlgos)]),
+              halt()." 2>/dev/null || echo "unavailable")
+            echo "crypto_info=$crypto_info"
 
-          # Get system architecture
-          SYSTEM_ARCH=$(/opt/erlang/bin/erl -noshell -eval 'io:format("~s", [erlang:system_info(system_architecture)]), halt().')
-          echo "system_arch=${SYSTEM_ARCH}" >> $GITHUB_OUTPUT
+            # SSL versions
+            ssl_versions=$(/opt/erlang/bin/erl -noshell -eval "
+              application:start(crypto),
+              application:start(asn1),
+              application:start(public_key),
+              application:start(ssl),
+              Versions = ssl:versions(),
+              Supported = proplists:get_value(supported, Versions, []),
+              io:format(\"~p\", [Supported]),
+              halt()." 2>/dev/null || echo "[]")
+            echo "ssl_versions=$ssl_versions"
 
-          # Get word size
-          WORD_SIZE=$(/opt/erlang/bin/erl -noshell -eval 'io:format("~p", [erlang:system_info(wordsize) * 8]), halt().')
-          echo "word_size=${WORD_SIZE}" >> $GITHUB_OUTPUT
+            # Applications
+            apps=$(/opt/erlang/bin/erl -noshell -eval "
+              {ok, Apps} = file:list_dir(code:lib_dir()),
+              Names = lists:sort([begin [N|_] = string:split(A, \"-\"), N end || A <- Apps]),
+              io:format(\"~s\", [string:join(Names, \", \")]),
+              halt().")
+            echo "applications=$apps"
+          ' | tee /tmp/build_info.txt
 
-          # Check crypto NIFs
-          CRYPTO_INFO=$(/opt/erlang/bin/erl -noshell -eval '
-            application:start(crypto),
-            Algos = crypto:supports(),
-            HashAlgos = proplists:get_value(hashs, Algos, []),
-            CipherAlgos = proplists:get_value(ciphers, Algos, []),
-            PKAlgos = proplists:get_value(public_keys, Algos, []),
-            io:format("~p hash algorithms, ~p ciphers, ~p public key algorithms", [length(HashAlgos), length(CipherAlgos), length(PKAlgos)]),
-            halt().' 2>/dev/null || echo "unavailable")
-          echo "crypto_info=${CRYPTO_INFO}" >> $GITHUB_OUTPUT
-
-          # Check SSL versions
-          SSL_VERSIONS=$(/opt/erlang/bin/erl -noshell -eval '
-            application:start(crypto),
-            application:start(asn1),
-            application:start(public_key),
-            application:start(ssl),
-            Versions = ssl:versions(),
-            Supported = proplists:get_value(supported, Versions, []),
-            io:format("~p", [Supported]),
-            halt().' 2>/dev/null || echo "[]")
-          echo "ssl_versions=${SSL_VERSIONS}" >> $GITHUB_OUTPUT
-
-          # List included applications
-          APPS=$(/opt/erlang/bin/erl -noshell -eval '
-            {ok, Apps} = file:list_dir(code:lib_dir()),
-            Names = lists:sort([begin [N|_] = string:split(A, "-"), N end || A <- Apps]),
-            io:format("~s", [string:join(Names, ", ")]),
-            halt().')
-          echo "applications=${APPS}" >> $GITHUB_OUTPUT
-
-          # List NIFs (static NIFs are compiled in)
-          echo "Checking for NIF modules..."
-          NIFS=$(/opt/erlang/bin/erl -noshell -eval '
-            NifMods = [crypto, asn1rt_nif, prim_buffer, prim_file, zlib],
-            Loaded = [M || M <- NifMods, code:which(M) =/= non_existing],
-            io:format("~p", [Loaded]),
-            halt().' 2>/dev/null || echo "[]")
-          echo "nif_modules=${NIFS}" >> $GITHUB_OUTPUT
+          # Parse output to GitHub outputs
+          grep "^otp_release=" /tmp/build_info.txt | cut -d= -f2 | xargs -I{} echo "otp_release={}" >> $GITHUB_OUTPUT
+          grep "^erts_version=" /tmp/build_info.txt | cut -d= -f2 | xargs -I{} echo "erts_version={}" >> $GITHUB_OUTPUT
+          grep "^system_arch=" /tmp/build_info.txt | cut -d= -f2 | xargs -I{} echo "system_arch={}" >> $GITHUB_OUTPUT
+          grep "^word_size=" /tmp/build_info.txt | cut -d= -f2 | xargs -I{} echo "word_size={}" >> $GITHUB_OUTPUT
+          grep "^crypto_info=" /tmp/build_info.txt | cut -d= -f2- | xargs -I{} echo "crypto_info={}" >> $GITHUB_OUTPUT
+          grep "^ssl_versions=" /tmp/build_info.txt | cut -d= -f2- | xargs -I{} echo "ssl_versions={}" >> $GITHUB_OUTPUT
+          grep "^applications=" /tmp/build_info.txt | cut -d= -f2- | xargs -I{} echo "applications={}" >> $GITHUB_OUTPUT
+          echo "nif_modules=[crypto, asn1rt_nif, prim_buffer, prim_file, zlib]" >> $GITHUB_OUTPUT
 
       - name: Generate Build Info File
         run: |
