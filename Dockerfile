@@ -20,7 +20,8 @@ ARG OTP_VERSION
 RUN apk add --no-cache \
     autoconf automake bash build-base curl git libtool \
     linux-headers ncurses-dev ncurses-static openssl-dev \
-    openssl-libs-static perl zlib-dev zlib-static
+    openssl-libs-static perl zlib-dev zlib-static \
+    libstdc++-dev g++
 
 WORKDIR /build
 RUN curl -fSL "https://github.com/erlang/otp/releases/download/OTP-${OTP_VERSION}/otp_src_${OTP_VERSION}.tar.gz" \
@@ -32,8 +33,6 @@ RUN ls -la /usr/lib/libssl.a /usr/lib/libcrypto.a
 
 # Configure for static build
 # Note: musl doesn't have libdl, it's built into libc
-# For OTP 28+: use --with-ssl to point to OpenSSL prefix
-# The configure will find headers in /usr/include/openssl and libs in /usr/lib
 RUN ./configure \
     --prefix=/opt/erlang \
     --enable-static-nifs \
@@ -47,11 +46,18 @@ RUN ./configure \
     --without-megaco \
     --without-jinterface \
     --with-ssl=/usr \
-    CFLAGS="-Os" \
-    LDFLAGS="-static" \
-    LIBS="-lssl -lcrypto -lz" \
-    || (cat lib/crypto/config.log && exit 1)
+    CFLAGS="-Os"
 
+# Patch erts emulator Makefile for fully static linking
+# 1. Add static OpenSSL libs (crypto.a needs them)
+# 2. Add -static flag to emulator link command
+# 3. Add static C++ runtime for JIT
+RUN sed -i 's|$(LIBS)|$(LIBS) /usr/lib/libcrypto.a /usr/lib/libssl.a /usr/lib/libz.a|g' erts/emulator/*/Makefile && \
+    sed -i 's|$(LDFLAGS)|$(LDFLAGS) -static|g' erts/emulator/*/Makefile && \
+    sed -i 's|-lstdc++|-l:libstdc++.a|g' erts/emulator/*/Makefile && \
+    sed -i 's|-lm |-lm -l:libstdc++.a |g' erts/emulator/*/Makefile
+
+# Build
 RUN make -j$(nproc) && make install
 
 RUN find /opt/erlang -type f -executable -exec strip --strip-all {} \; 2>/dev/null || true
