@@ -2,9 +2,17 @@
 
 This file provides guidance to Claude Code when working with this repository.
 
+See [SPECKIT.md](SPECKIT.md) for full specification.
+
 ## Project Overview
 
 Static BEAM builds fully static Erlang/OTP binaries using Alpine Linux and musl libc. The resulting binaries have zero dynamic dependencies and run on any Linux distribution.
+
+**Key constraints**:
+- Output must have NO dynamic links (`ldd` returns "not a dynamic executable")
+- Use musl libc (Alpine Linux native)
+- Release tags: `OTP-{version}` (e.g., `OTP-27.2`)
+- Build for both amd64 and arm64
 
 ## Build Commands
 
