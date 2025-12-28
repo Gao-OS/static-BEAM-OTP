@@ -7,8 +7,8 @@
 # Test:
 #   docker build -t static-beam . && docker run --rm static-beam
 
-ARG OTP_VERSION=27.2
-ARG ELIXIR_VERSION=1.18.1
+ARG OTP_VERSION=28.2
+ARG ELIXIR_VERSION=1.19.4
 
 # =============================================================================
 # Stage 1: Build Erlang/OTP
