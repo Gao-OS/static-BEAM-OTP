@@ -32,7 +32,8 @@ RUN ls -la /usr/lib/libssl.a /usr/lib/libcrypto.a
 
 # Configure for static build
 # Note: musl doesn't have libdl, it's built into libc
-# OTP 28+ requires explicit SSL path for static builds
+# OTP 28+ requires explicit SSL paths - use erl_xcomp variables for static libs
+ENV SSL_LIBS="-L/usr/lib -lssl -lcrypto"
 RUN ./configure \
     --prefix=/opt/erlang \
     --enable-static-nifs \
@@ -46,8 +47,10 @@ RUN ./configure \
     --without-megaco \
     --without-jinterface \
     --with-ssl=/usr \
-    --with-crypto \
-    CFLAGS="-Os -I/usr/include" \
+    --with-ssl-incl=/usr/include \
+    --with-ssl-lib=/usr/lib \
+    erl_xcomp_sysroot=/ \
+    CFLAGS="-Os -I/usr/include/openssl" \
     LDFLAGS="-static -L/usr/lib" \
     LIBS="-lssl -lcrypto -lz"
 
