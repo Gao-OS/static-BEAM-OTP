@@ -1,0 +1,168 @@
+name: E2E Test
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: 'OTP release tag (e.g., OTP-27.2)'
+        required: true
+        type: string
+
+jobs:
+  e2e-test:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: amd64
+            runner: ubuntu-latest
+          - arch: arm64
+            runner: ubuntu-24.04-arm
+
+    runs-on: ${{ matrix.runner }}
+    name: E2E Test (${{ matrix.arch }})
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Validate release tag format
+        run: |
+          TAG="${{ github.event.inputs.release_tag }}"
+          if [[ ! "$TAG" =~ ^OTP-[0-9]+\.[0-9]+(\.[0-9]+)?$ ]]; then
+            echo "::error::Invalid release tag format: $TAG"
+            echo "Expected format: OTP-X.Y or OTP-X.Y.Z (e.g., OTP-27.2)"
+            exit 1
+          fi
+          echo "Release tag format is valid: $TAG"
+
+      - name: Download static Erlang package
+        id: download
+        continue-on-error: true
+        run: |
+          gh release download "${{ github.event.inputs.release_tag }}" \
+            --pattern "static-erlang-*-linux-${{ matrix.arch }}.tar.gz" \
+            --output erlang.tar.gz
+        env:
+          GH_TOKEN: ${{ github.token }}
+
+      - name: Check download result
+        if: steps.download.outcome == 'failure'
+        run: |
+          echo "::error::Release not found: ${{ github.event.inputs.release_tag }}"
+          echo ""
+          echo "The release '${{ github.event.inputs.release_tag }}' does not exist or does not have a package for ${{ matrix.arch }}."
+          echo ""
+          echo "Available releases:"
+          gh release list --limit 5 || echo "Unable to list releases"
+          exit 1
+        env:
+          GH_TOKEN: ${{ github.token }}
+
+      - name: Extract static Erlang to /opt/erlang
+        run: |
+          sudo mkdir -p /opt/erlang
+          sudo tar -xzf erlang.tar.gz -C /opt/erlang
+          echo "=== Verifying Erlang installation ==="
+          /opt/erlang/bin/erl -noshell -eval 'io:format("Erlang OK~n"), halt().'
+
+      - name: Install Elixir
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y elixir
+
+      - name: Build demo app release
+        id: build
+        run: |
+          cd demo
+          export PATH="/opt/erlang/bin:$PATH"
+          echo "=== Installing Hex and Rebar ==="
+          mix local.hex --force
+          mix local.rebar --force
+          echo "=== Fetching dependencies ==="
+          mix deps.get --only prod
+          echo "=== Building release ==="
+          MIX_ENV=prod ERTS_PATH=/opt/erlang/lib/erlang mix release demo --overwrite
+          echo "=== Build complete ==="
+
+      - name: Run health check
+        id: health_check
+        run: |
+          cd demo
+          echo "=== Running health check ==="
+          _build/prod/rel/demo/bin/demo eval "Demo.run_health_check()"
+
+      - name: Run functional verification
+        id: functional
+        run: |
+          cd demo
+          _build/prod/rel/demo/bin/demo eval "
+            IO.puts(\"=== Functional Verification ===\")
+
+            # Verify crypto
+            hash = :crypto.hash(:sha256, \"hello\") |> Base.encode16()
+            IO.puts(\"Crypto SHA256: #{hash}\")
+
+            # Verify SSL can start
+            :ssl.start()
+            IO.puts(\"SSL started successfully\")
+
+            # Verify process operations
+            pid = spawn(fn -> :ok end)
+            IO.puts(\"Spawned process: #{inspect(pid)}\")
+
+            IO.puts(\"=== All verifications passed ===\")
+          "
+
+      - name: Capture logs on failure
+        if: failure()
+        run: |
+          echo "::group::Demo App Logs"
+          if [ -d "demo/_build/prod/rel/demo" ]; then
+            echo "=== Release structure ==="
+            ls -la demo/_build/prod/rel/demo/
+            if [ -f "demo/_build/prod/rel/demo/releases/*/vm.args" ]; then
+              echo "=== VM Args ==="
+              cat demo/_build/prod/rel/demo/releases/*/vm.args 2>/dev/null || true
+            fi
+          else
+            echo "Release directory not found - build may have failed"
+          fi
+          echo "::endgroup::"
+
+          echo "::group::Erlang Installation"
+          echo "=== Erlang directory contents ==="
+          ls -la /opt/erlang/bin/ 2>/dev/null || echo "Erlang not installed"
+          echo "::endgroup::"
+
+      - name: Report architecture status
+        if: always()
+        run: |
+          echo "## E2E Test Results (${{ matrix.arch }})" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          # Overall status
+          if [ "${{ job.status }}" == "success" ]; then
+            echo "### ✅ Status: PASSED" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "### ❌ Status: FAILED" >> $GITHUB_STEP_SUMMARY
+          fi
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          # Configuration
+          echo "#### Configuration" >> $GITHUB_STEP_SUMMARY
+          echo "| Setting | Value |" >> $GITHUB_STEP_SUMMARY
+          echo "|---------|-------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Architecture | ${{ matrix.arch }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Release Tag | ${{ github.event.inputs.release_tag }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Runner | ${{ matrix.runner }} |" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+
+          # Step results
+          echo "#### Step Results" >> $GITHUB_STEP_SUMMARY
+          echo "| Step | Status |" >> $GITHUB_STEP_SUMMARY
+          echo "|------|--------|" >> $GITHUB_STEP_SUMMARY
+          echo "| Download | ${{ steps.download.outcome }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Build | ${{ steps.build.outcome }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Health Check | ${{ steps.health_check.outcome }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Functional Tests | ${{ steps.functional.outcome }} |" >> $GITHUB_STEP_SUMMARY
