@@ -5,8 +5,8 @@ let
   pkgs-unstable = import inputs.nixpkgs-unstable { system = pkgs.stdenv.system; };
 
   # Pin OTP version - should match Dockerfile ARG values
-  otpVersion = "27.2";
-  elixirVersion = "1.18.1";
+  otpVersion = "28.2";
+  elixirVersion = "1.19.4";
 in
 {
   # Environment variables
