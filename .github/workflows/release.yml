@@ -297,7 +297,7 @@ jobs:
         run: |
           set -euo pipefail
 
-          RELEASE_ID="$(gh api "repos/$GITHUB_REPOSITORY/releases/tags/$TAG_NAME" --jq '.id')"
+          RELEASE_ID="$(gh release view "$TAG_NAME" --repo "$GITHUB_REPOSITORY" --json databaseId --jq '.databaseId')"
           gh api \
             --method PATCH \
             "repos/$GITHUB_REPOSITORY/releases/$RELEASE_ID" \
