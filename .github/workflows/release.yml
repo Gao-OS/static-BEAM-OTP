@@ -262,7 +262,14 @@ jobs:
           set -euo pipefail
 
           mkdir -p dist
-          ./scripts/collect-build-info.sh static-erlang > "dist/BUILD_INFO_${ARCH}.json"
+          docker run --rm \
+            -e ARCH="$ARCH" \
+            -v "$PWD/static-erlang:/opt/erlang:ro" \
+            -v "$PWD/scripts:/workspace/scripts:ro" \
+            -v "$PWD/dist:/workspace/dist" \
+            -w /workspace \
+            alpine:3.21 \
+            sh -c 'apk add --no-cache bash >/dev/null && ./scripts/collect-build-info.sh /opt/erlang > "dist/BUILD_INFO_${ARCH}.json"'
           tar -czf "dist/static-erlang-otp-${OTP_VERSION}-linux-${ARCH}.tar.gz" static-erlang
           ls -la dist
 
