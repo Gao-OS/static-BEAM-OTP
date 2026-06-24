@@ -215,11 +215,19 @@ jobs:
         run: |
           set -euo pipefail
 
+          OTP_MAJOR="${OTP_VERSION%%.*}"
           ACTUAL_VERSION="$(docker run --rm -v "$PWD/static-erlang:/opt/erlang" alpine:3.21 \
+            sh -c "cat /opt/erlang/lib/erlang/releases/$OTP_MAJOR/OTP_VERSION")"
+          RUNTIME_RELEASE="$(docker run --rm -v "$PWD/static-erlang:/opt/erlang" alpine:3.21 \
             /opt/erlang/bin/erl -noshell -eval 'io:format("~s", [erlang:system_info(otp_release)]), halt().')"
 
           if [ "$ACTUAL_VERSION" != "$OTP_VERSION" ]; then
             echo "::error::Built OTP $ACTUAL_VERSION, expected $OTP_VERSION"
+            exit 1
+          fi
+
+          if [ "$RUNTIME_RELEASE" != "$OTP_MAJOR" ]; then
+            echo "::error::Runtime OTP release $RUNTIME_RELEASE, expected $OTP_MAJOR"
             exit 1
           fi
 
