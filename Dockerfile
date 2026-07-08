@@ -33,6 +33,11 @@ RUN ls -la /usr/lib/libssl.a /usr/lib/libcrypto.a
 
 # Configure for static build
 # Note: musl doesn't have libdl, it's built into libc
+# TODO(denox-release): Add libdenox_nif.a with
+# --enable-static-nifs=/path/to/libdenox_nif.a:denox_nif once Denox v0.7.0
+# or newer publishes the static Linux/musl archives from gsmlg-dev/denox#4.
+# TODO: Add the ex_turso v0.4.1 static NIF archive to --enable-static-nifs
+# with an arch-aware download step.
 RUN ./configure \
     --prefix=/opt/erlang \
     --enable-static-nifs \

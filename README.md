@@ -209,6 +209,12 @@ docker build -t my_app .
 docker run --rm my_app
 ```
 
+## Third-Party NIFs
+
+Third-party NIFs for this runtime must be statically linked into OTP, not copied
+in as Rustler precompiled `.so` files. See [docs/static-nifs.md](docs/static-nifs.md)
+for the current `denox`, `libsql`, and `turso` status.
+
 ## Alternative: Environment Variable
 
 You can also use an environment variable:
