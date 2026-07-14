@@ -17,7 +17,7 @@ symbol compatible with OTP's static loader.
 
 | Target | Source | Status |
 | --- | --- | --- |
-| `denox` | `gsmlg-dev/denox` | Upstream support merged in [gsmlg-dev/denox#5](https://github.com/gsmlg-dev/denox/pull/5), closing [gsmlg-dev/denox#4](https://github.com/gsmlg-dev/denox/issues/4). `main` is bumped to `0.7.0`, builds `native/denox_nif` as both `cdylib` and `staticlib`, exports `denox_nif_nif_init`, and documents `--enable-static-nifs=/path/to/libdenox_nif.a:denox_nif`. Waiting for a `v0.7.0` or newer Denox release with the Linux/musl static artifacts; latest release `v0.6.0` still only publishes dynamic RustlerPrecompiled `.so` archives. |
+| `denox` | `gsmlg-dev/denox` | Wired in `Dockerfile` using the `v0.9.0` Linux/musl static archives for `x86_64` and `aarch64`. The archive contains `libdenox_nif.a`, exports `denox_nif_nif_init`, links into `beam.jit`, and completes OTP bootstrap. [gsmlg-dev/denox#23](https://github.com/gsmlg-dev/denox/issues/23) is closed as completed by [gsmlg-dev/denox#24](https://github.com/gsmlg-dev/denox/pull/24). |
 | `turso` | `gsmlg-dev/ex_turso` | Ready to wire. `v0.4.1` publishes static Linux/musl archives for `x86_64` and `aarch64`; both release tarballs contain `libex_turso.a` and export `ex_turso_nif_init`. [gsmlg-dev/ex_turso#13](https://github.com/gsmlg-dev/ex_turso/issues/13) is closed as completed. |
 | `libsql` | `ocean/ecto_libsql` | Publishes Linux musl precompiled dynamic NIFs, but not a static archive suitable for this runtime. |
 
@@ -33,7 +33,7 @@ References:
 
 - [Erlang `erl_nif` static inclusion documentation](https://www.erlang.org/doc/apps/erts/erl_nif.html)
 - [Denox repository](https://github.com/gsmlg-dev/denox)
-- [Denox v0.6.0 release artifacts](https://github.com/gsmlg-dev/denox/releases/tag/v0.6.0)
+- [Denox v0.9.0 release artifacts](https://github.com/gsmlg-dev/denox/releases/tag/v0.9.0)
 - [Denox static NIF PR](https://github.com/gsmlg-dev/denox/pull/5)
 - [ex_turso v0.4.1 release artifacts](https://github.com/gsmlg-dev/ex_turso/releases/tag/v0.4.1)
 - [ecto_libsql release artifacts](https://github.com/ocean/ecto_libsql/releases)

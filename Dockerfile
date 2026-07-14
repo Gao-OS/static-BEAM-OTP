@@ -9,6 +9,7 @@
 
 ARG OTP_VERSION=28.2
 ARG ELIXIR_VERSION=1.19.4
+ARG DENOX_VERSION=0.9.0
 
 # =============================================================================
 # Stage 1: Build Erlang/OTP
@@ -16,6 +17,8 @@ ARG ELIXIR_VERSION=1.19.4
 FROM alpine:3.21 AS erlang-builder
 
 ARG OTP_VERSION
+ARG DENOX_VERSION
+ARG TARGETARCH
 
 RUN apk add --no-cache \
     autoconf automake bash build-base curl git libtool \
@@ -31,16 +34,28 @@ WORKDIR /build/otp
 # Verify static SSL libs exist
 RUN ls -la /usr/lib/libssl.a /usr/lib/libcrypto.a
 
+# Download Denox static NIF archive for OTP static linking.
+RUN set -eux; \
+    arch="${TARGETARCH:-$(apk --print-arch)}"; \
+    case "$arch" in \
+        amd64|x86_64) denox_target="x86_64-unknown-linux-musl" ;; \
+        arm64|aarch64) denox_target="aarch64-unknown-linux-musl" ;; \
+        *) echo "Unsupported Denox static NIF architecture: $arch" >&2; exit 1 ;; \
+    esac; \
+    archive="denox_nif-v${DENOX_VERSION}-nif-2.17-${denox_target}-static.tar.gz"; \
+    mkdir -p /build/static-nifs/denox; \
+    curl -fSL "https://github.com/gsmlg-dev/denox/releases/download/v${DENOX_VERSION}/${archive}" \
+        -o "/tmp/${archive}"; \
+    tar -xzf "/tmp/${archive}" -C /build/static-nifs/denox; \
+    nm -g /build/static-nifs/denox/libdenox_nif.a | grep 'denox_nif_nif_init'
+
 # Configure for static build
 # Note: musl doesn't have libdl, it's built into libc
-# TODO(denox-release): Add libdenox_nif.a with
-# --enable-static-nifs=/path/to/libdenox_nif.a:denox_nif once Denox v0.7.0
-# or newer publishes the static Linux/musl archives from gsmlg-dev/denox#4.
 # TODO: Add the ex_turso v0.4.1 static NIF archive to --enable-static-nifs
 # with an arch-aware download step.
 RUN ./configure \
     --prefix=/opt/erlang \
-    --enable-static-nifs \
+    --enable-static-nifs=/build/static-nifs/denox/libdenox_nif.a:denox_nif \
     --enable-static-drivers \
     --without-javac \
     --without-wx \
